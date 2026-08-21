@@ -21,6 +21,7 @@ function jsonResponse(data: unknown, status = 200) {
 }
 
 Deno.serve(async (req: Request) => {
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 200,
@@ -29,18 +30,13 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    // Supabase admin client
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
-    if (!supabaseUrl || !serviceRoleKey) {
-      return jsonResponse(
-        { error: "Supabase server configuration is missing" },
-        500
-      );
-    }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-
+    // Check logged-in user
     const authHeader = req.headers.get("Authorization");
 
     if (!authHeader) {
@@ -50,7 +46,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const token = authHeader.replace(/^Bearer\s+/i, "");
+    const token = authHeader.replace("Bearer ", "");
 
     const {
       data: { user },
@@ -64,55 +60,35 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Get the CheapDataHub API key from the database.
-    // The service-role client bypasses RLS.
-    const { data: secretRow, error: secretError } = await supabase
-      .from("api_secrets")
-      .select("key_value")
-      .eq("key_name", "CDH_API_KEY")
-      .maybeSingle();
+    // Get CheapDataHub API key from Supabase Edge Function Secrets
+    const apiKey = Deno.env.get("CDH_API_KEY");
 
-    if (secretError) {
-      console.error("API secret lookup failed:", secretError);
+    if (!apiKey) {
       return jsonResponse(
-        { error: "Unable to load server API configuration" },
+        { error: "CDH_API_KEY is not configured" },
         500
       );
     }
 
-    if (!secretRow?.key_value) {
-      return jsonResponse(
-        { error: "CheapDataHub API key is not configured" },
-        500
-      );
-    }
-
-    const apiKey = secretRow.key_value;
-
+    // Get request path
     const url = new URL(req.url);
 
-    // IMPORTANT:
-    // Supabase invokes this function at:
-    // /functions/v1/vtu-proxy/...
-    //
-    // Remove that prefix so the remaining path becomes:
-    // wallet/balance
-    // airtime/purchase
-    // data/purchase
-    // transactions
     const path = url.pathname.replace(
       /^\/functions\/v1\/vtu-proxy\/?/,
       ""
     );
 
-    const body =
-      req.method === "POST"
-        ? await req.json().catch(() => ({}))
-        : {};
+    // Read POST body
+    let body: Record<string, unknown> = {};
 
-    // --------------------------------------------------
-    // Wallet balance
-    // --------------------------------------------------
+    if (req.method === "POST") {
+      body = await req.json().catch(() => ({}));
+    }
+
+    // ============================================================
+    // WALLET BALANCE
+    // ============================================================
+
     if (path === "wallet/balance") {
       const resp = await fetch(
         `${CDH_BASE}/wallet/balance/`,
@@ -125,9 +101,7 @@ Deno.serve(async (req: Request) => {
         }
       );
 
-      const data = await resp.json().catch(() => ({
-        error: "Invalid response from CheapDataHub",
-      }));
+      const data = await resp.json().catch(() => ({}));
 
       return jsonResponse(
         data,
@@ -135,20 +109,22 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // --------------------------------------------------
-    // Airtime purchase
-    // --------------------------------------------------
+    // ============================================================
+    // AIRTIME PURCHASE
+    // ============================================================
+
     if (path === "airtime/purchase") {
-      const {
-        provider_id,
-        phone_number,
-        amount,
-        network,
-      } = body;
+      const provider_id = body.provider_id;
+      const phone_number = body.phone_number;
+      const amount = body.amount;
+      const network = body.network;
 
       if (!provider_id || !phone_number || !amount) {
         return jsonResponse(
-          { error: "Missing required fields" },
+          {
+            error:
+              "Missing required fields: provider_id, phone_number, amount",
+          },
           422
         );
       }
@@ -169,31 +145,40 @@ Deno.serve(async (req: Request) => {
         }
       );
 
-      const data = await resp.json().catch(() => ({
-        error: "Invalid response from CheapDataHub",
-      }));
+      const data = await resp.json().catch(() => ({}));
 
       const success =
         data.status === "true" ||
-        data.status === true;
+        data.status === true ||
+        data.success === true;
 
-      await supabase.from("transactions").insert({
-        user_id: user.id,
-        type: "airtime",
-        network: network || "UNKNOWN",
-        phone_number,
-        amount: Number(amount),
-        provider_ref:
-          data.reference ||
-          data.transaction_id?.toString() ||
-          "",
-        status: success ? "success" : "failed",
-        message:
-          data.message ||
-          (success
-            ? "Airtime purchase successful"
-            : "Airtime purchase failed"),
-      });
+      // Save transaction
+      const { error: transactionError } = await supabase
+        .from("transactions")
+        .insert({
+          user_id: user.id,
+          type: "airtime",
+          network: network || "UNKNOWN",
+          phone_number: String(phone_number),
+          amount: Number(amount),
+          provider_ref:
+            data.reference ||
+            data.transaction_id?.toString() ||
+            "",
+          status: success ? "success" : "failed",
+          message:
+            data.message ||
+            (success
+              ? "Airtime purchase successful"
+              : "Airtime purchase failed"),
+        });
+
+      if (transactionError) {
+        console.error(
+          "Transaction insert error:",
+          transactionError
+        );
+      }
 
       return jsonResponse(
         data,
@@ -201,21 +186,23 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // --------------------------------------------------
-    // Data purchase
-    // --------------------------------------------------
+    // ============================================================
+    // DATA PURCHASE
+    // ============================================================
+
     if (path === "data/purchase") {
-      const {
-        bundle_id,
-        phone_number,
-        plan_name,
-        network,
-        amount,
-      } = body;
+      const bundle_id = body.bundle_id;
+      const phone_number = body.phone_number;
+      const plan_name = body.plan_name;
+      const network = body.network;
+      const amount = body.amount;
 
       if (!bundle_id || !phone_number) {
         return jsonResponse(
-          { error: "Missing required fields" },
+          {
+            error:
+              "Missing required fields: bundle_id, phone_number",
+          },
           422
         );
       }
@@ -235,32 +222,41 @@ Deno.serve(async (req: Request) => {
         }
       );
 
-      const data = await resp.json().catch(() => ({
-        error: "Invalid response from CheapDataHub",
-      }));
+      const data = await resp.json().catch(() => ({}));
 
       const success =
         data.status === "true" ||
-        data.status === true;
+        data.status === true ||
+        data.success === true;
 
-      await supabase.from("transactions").insert({
-        user_id: user.id,
-        type: "data",
-        network: network || "UNKNOWN",
-        phone_number,
-        amount: Number(amount) || 0,
-        plan_name: plan_name || "",
-        provider_ref:
-          data.reference ||
-          data.transaction_id?.toString() ||
-          "",
-        status: success ? "success" : "failed",
-        message:
-          data.message ||
-          (success
-            ? "Data purchase successful"
-            : "Data purchase failed"),
-      });
+      // Save transaction
+      const { error: transactionError } = await supabase
+        .from("transactions")
+        .insert({
+          user_id: user.id,
+          type: "data",
+          network: network || "UNKNOWN",
+          phone_number: String(phone_number),
+          amount: Number(amount) || 0,
+          plan_name: String(plan_name || ""),
+          provider_ref:
+            data.reference ||
+            data.transaction_id?.toString() ||
+            "",
+          status: success ? "success" : "failed",
+          message:
+            data.message ||
+            (success
+              ? "Data purchase successful"
+              : "Data purchase failed"),
+        });
+
+      if (transactionError) {
+        console.error(
+          "Transaction insert error:",
+          transactionError
+        );
+      }
 
       return jsonResponse(
         data,
@@ -268,11 +264,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // --------------------------------------------------
-    // Transactions
-    // --------------------------------------------------
+    // ============================================================
+    // TRANSACTIONS
+    // ============================================================
+
     if (path === "transactions") {
-      const { data, error } = await supabase
+      const {
+        data,
+        error,
+      } = await supabase
         .from("transactions")
         .select("*")
         .eq("user_id", user.id)
@@ -283,7 +283,9 @@ Deno.serve(async (req: Request) => {
 
       if (error) {
         return jsonResponse(
-          { error: error.message },
+          {
+            error: error.message,
+          },
           500
         );
       }
@@ -293,6 +295,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ============================================================
+    // UNKNOWN ROUTE
+    // ============================================================
+
     return jsonResponse(
       {
         error: "Not found",
@@ -301,7 +307,7 @@ Deno.serve(async (req: Request) => {
       404
     );
   } catch (err) {
-    console.error("vtu-proxy error:", err);
+    console.error("VTU proxy error:", err);
 
     return jsonResponse(
       {
