@@ -3,12 +3,12 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const CDH_BASE = "https://www.cheapdatahub.ng/api/v1/resellers";
+const FLUTTERWAVE_BASE_URL = "https://api.flutterwave.com/v3";
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -21,32 +21,77 @@ function jsonResponse(data: unknown, status = 200) {
 }
 
 Deno.serve(async (req: Request) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, {
-      status: 200,
+      status: 204,
       headers: corsHeaders,
     });
   }
 
   try {
-    // Supabase admin client
+    /*
+     * ---------------------------------------------------------
+     * 1. Get environment variables
+     * ---------------------------------------------------------
+     */
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const flutterwaveSecretKey = Deno.env.get("FLW_SECRET_KEY");
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return jsonResponse(
+        {
+          error: "Supabase server configuration is missing",
+        },
+        500,
+      );
+    }
+
+    if (!flutterwaveSecretKey) {
+      return jsonResponse(
+        {
+          error: "Flutterwave is not configured on the server",
+        },
+        500,
+      );
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * 2. Create Supabase admin client
+     * ---------------------------------------------------------
+     */
+
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      supabaseUrl,
+      serviceRoleKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      },
     );
 
-    // Check logged-in user
+    /*
+     * ---------------------------------------------------------
+     * 3. Authenticate the customer
+     * ---------------------------------------------------------
+     */
+
     const authHeader = req.headers.get("Authorization");
 
     if (!authHeader) {
       return jsonResponse(
-        { error: "Missing authorization header" },
-        401
+        {
+          error: "Missing authorization header",
+        },
+        401,
       );
     }
 
-    const token = authHeader.replace("Bearer ", "");
+    const token = authHeader.replace(/^Bearer\s+/i, "");
 
     const {
       data: { user },
@@ -55,268 +100,239 @@ Deno.serve(async (req: Request) => {
 
     if (authError || !user) {
       return jsonResponse(
-        { error: "Unauthorized" },
-        401
-      );
-    }
-
-    // Get CheapDataHub API key from Supabase Edge Function Secrets
-    const apiKey = Deno.env.get("CDH_API_KEY");
-
-    if (!apiKey) {
-      return jsonResponse(
-        { error: "CDH_API_KEY is not configured" },
-        500
-      );
-    }
-
-    // Get request path
-    const url = new URL(req.url);
-
-    const path = url.pathname.replace(
-      /^\/functions\/v1\/vtu-proxy\/?/,
-      ""
-    );
-
-    // Read POST body
-    let body: Record<string, unknown> = {};
-
-    if (req.method === "POST") {
-      body = await req.json().catch(() => ({}));
-    }
-
-    // ============================================================
-    // WALLET BALANCE
-    // ============================================================
-
-    if (path === "wallet/balance") {
-      const resp = await fetch(
-        `${CDH_BASE}/wallet/balance/`,
         {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      const data = await resp.json().catch(() => ({}));
-
-      return jsonResponse(
-        data,
-        resp.ok ? 200 : resp.status
+          error: "Unauthorized",
+        },
+        401,
       );
     }
 
-    // ============================================================
-    // AIRTIME PURCHASE
-    // ============================================================
+    /*
+     * ---------------------------------------------------------
+     * 4. Read request body
+     * ---------------------------------------------------------
+     */
 
-    if (path === "airtime/purchase") {
-      const provider_id = body.provider_id;
-      const phone_number = body.phone_number;
-      const amount = body.amount;
-      const network = body.network;
+    const body = await req.json().catch(() => null);
 
-      if (!provider_id || !phone_number || !amount) {
-        return jsonResponse(
-          {
-            error:
-              "Missing required fields: provider_id, phone_number, amount",
-          },
-          422
-        );
-      }
-
-      const resp = await fetch(
-        `${CDH_BASE}/airtime/purchase/`,
+    if (!body) {
+      return jsonResponse(
         {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            provider_id,
-            phone_number,
-            amount,
-          }),
-        }
-      );
-
-      const data = await resp.json().catch(() => ({}));
-
-      const success =
-        data.status === "true" ||
-        data.status === true ||
-        data.success === true;
-
-      // Save transaction
-      const { error: transactionError } = await supabase
-        .from("transactions")
-        .insert({
-          user_id: user.id,
-          type: "airtime",
-          network: network || "UNKNOWN",
-          phone_number: String(phone_number),
-          amount: Number(amount),
-          provider_ref:
-            data.reference ||
-            data.transaction_id?.toString() ||
-            "",
-          status: success ? "success" : "failed",
-          message:
-            data.message ||
-            (success
-              ? "Airtime purchase successful"
-              : "Airtime purchase failed"),
-        });
-
-      if (transactionError) {
-        console.error(
-          "Transaction insert error:",
-          transactionError
-        );
-      }
-
-      return jsonResponse(
-        data,
-        resp.ok ? 200 : resp.status
+          error: "Invalid request body",
+        },
+        400,
       );
     }
 
-    // ============================================================
-    // DATA PURCHASE
-    // ============================================================
+    const amount = Number(body.amount);
 
-    if (path === "data/purchase") {
-      const bundle_id = body.bundle_id;
-      const phone_number = body.phone_number;
-      const plan_name = body.plan_name;
-      const network = body.network;
-      const amount = body.amount;
-
-      if (!bundle_id || !phone_number) {
-        return jsonResponse(
-          {
-            error:
-              "Missing required fields: bundle_id, phone_number",
-          },
-          422
-        );
-      }
-
-      const resp = await fetch(
-        `${CDH_BASE}/data/purchase/`,
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return jsonResponse(
         {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            bundle_id,
-            phone_number,
-          }),
-        }
-      );
-
-      const data = await resp.json().catch(() => ({}));
-
-      const success =
-        data.status === "true" ||
-        data.status === true ||
-        data.success === true;
-
-      // Save transaction
-      const { error: transactionError } = await supabase
-        .from("transactions")
-        .insert({
-          user_id: user.id,
-          type: "data",
-          network: network || "UNKNOWN",
-          phone_number: String(phone_number),
-          amount: Number(amount) || 0,
-          plan_name: String(plan_name || ""),
-          provider_ref:
-            data.reference ||
-            data.transaction_id?.toString() ||
-            "",
-          status: success ? "success" : "failed",
-          message:
-            data.message ||
-            (success
-              ? "Data purchase successful"
-              : "Data purchase failed"),
-        });
-
-      if (transactionError) {
-        console.error(
-          "Transaction insert error:",
-          transactionError
-        );
-      }
-
-      return jsonResponse(
-        data,
-        resp.ok ? 200 : resp.status
+          error: "Enter a valid funding amount",
+        },
+        422,
       );
     }
 
-    // ============================================================
-    // TRANSACTIONS
-    // ============================================================
+    /*
+     * Minimum wallet funding amount.
+     *
+     * Change this later if you want.
+     */
 
-    if (path === "transactions") {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("transactions")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", {
-          ascending: false,
-        })
-        .limit(50);
+    if (amount < 100) {
+      return jsonResponse(
+        {
+          error: "Minimum wallet funding amount is ₦100",
+        },
+        422,
+      );
+    }
 
-      if (error) {
-        return jsonResponse(
-          {
-            error: error.message,
-          },
-          500
-        );
-      }
+    /*
+     * Optional maximum amount.
+     */
 
-      return jsonResponse({
-        transactions: data ?? [],
+    if (amount > 1000000) {
+      return jsonResponse(
+        {
+          error: "Maximum wallet funding amount is ₦1,000,000",
+        },
+        422,
+      );
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * 5. Get customer information
+     * ---------------------------------------------------------
+     */
+
+    const email =
+      user.email ||
+      body.email ||
+      "";
+
+    if (!email) {
+      return jsonResponse(
+        {
+          error: "Your account does not have an email address",
+        },
+        422,
+      );
+    }
+
+    const fullName =
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      "CheapDataHub Customer";
+
+    /*
+     * ---------------------------------------------------------
+     * 6. Generate unique payment reference
+     * ---------------------------------------------------------
+     *
+     * Never use the amount alone as a reference.
+     */
+
+    const reference =
+      `CDH-${user.id.slice(0, 8)}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`
+        .toUpperCase();
+
+    /*
+     * ---------------------------------------------------------
+     * 7. Save pending payment
+     * ---------------------------------------------------------
+     */
+
+    const { error: insertError } = await supabase
+      .from("wallet_transactions")
+      .insert({
+        user_id: user.id,
+        type: "funding",
+        amount,
+        reference,
+        status: "pending",
+        provider: "flutterwave",
+        description: "Wallet funding",
       });
+
+    if (insertError) {
+      console.error("wallet_transactions insert error:", insertError);
+
+      return jsonResponse(
+        {
+          error: "Could not create wallet funding record",
+          details: insertError.message,
+        },
+        500,
+      );
     }
 
-    // ============================================================
-    // UNKNOWN ROUTE
-    // ============================================================
+    /*
+     * ---------------------------------------------------------
+     * 8. Initialize Flutterwave payment
+     * ---------------------------------------------------------
+     */
 
-    return jsonResponse(
+    const flutterwaveResponse = await fetch(
+      `${FLUTTERWAVE_BASE_URL}/payments`,
       {
-        error: "Not found",
-        path,
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${flutterwaveSecretKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tx_ref: reference,
+          amount,
+          currency: "NGN",
+
+          redirect_url:
+            body.redirect_url ||
+            `${req.headers.get("origin") || ""}/fund-wallet`,
+
+          customer: {
+            email,
+            name: fullName,
+          },
+
+          customizations: {
+            title: "CheapDataHub Wallet Funding",
+            description: `Fund your CheapDataHub wallet with ₦${amount.toLocaleString(
+              "en-NG",
+            )}`,
+            logo: "",
+          },
+
+          meta: {
+            user_id: user.id,
+            wallet_funding: true,
+          },
+        }),
       },
-      404
     );
-  } catch (err) {
-    console.error("VTU proxy error:", err);
+
+    const flutterwaveData = await flutterwaveResponse.json();
+
+    /*
+     * ---------------------------------------------------------
+     * 9. Handle Flutterwave initialization failure
+     * ---------------------------------------------------------
+     */
+
+    if (
+      !flutterwaveResponse.ok ||
+      flutterwaveData.status !== "success"
+    ) {
+      console.error(
+        "Flutterwave initialization failed:",
+        flutterwaveData,
+      );
+
+      await supabase
+        .from("wallet_transactions")
+        .update({
+          status: "failed",
+          description: "Flutterwave payment initialization failed",
+        })
+        .eq("reference", reference)
+        .eq("user_id", user.id);
+
+      return jsonResponse(
+        {
+          error:
+            flutterwaveData.message ||
+            "Unable to initialize Flutterwave payment",
+        },
+        502,
+      );
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * 10. Return checkout URL to frontend
+     * ---------------------------------------------------------
+     */
+
+    return jsonResponse({
+      success: true,
+      message: "Payment initialized successfully",
+      reference,
+      payment_link: flutterwaveData.data?.link || null,
+    });
+  } catch (error) {
+    console.error("wallet-fund error:", error);
 
     return jsonResponse(
       {
         error:
-          err instanceof Error
-            ? err.message
+          error instanceof Error
+            ? error.message
             : "Internal server error",
       },
-      500
+      500,
     );
   }
 });
