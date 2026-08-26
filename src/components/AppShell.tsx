@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
+
 import {
   getWalletBalance,
   getTransactions,
   initializeWalletFunding,
   verifyWalletFunding,
 } from "@/lib/api";
+
 import { formatNaira } from "@/lib/dataPlans";
 import type { Transaction } from "@/types";
 
@@ -25,6 +27,7 @@ import {
   Plus,
   CreditCard,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 
 import AirtimePurchase from "./AirtimePurchase";
@@ -37,11 +40,16 @@ type View =
   | "data"
   | "transactions";
 
-declare global {
-  interface Window {
-    FlutterwaveCheckout?: (config: any) => void;
-  }
-}
+type UserLike = {
+  id: string;
+  email?: string | null;
+  phone?: string | null;
+  user_metadata?: {
+    full_name?: string;
+    name?: string;
+    phone?: string;
+  };
+};
 
 export default function AppShell({
   view,
@@ -60,53 +68,280 @@ export default function AppShell({
   const [transactions, setTransactions] =
     useState<Transaction[]>([]);
 
-  const [loading, setLoading] =
+  const [loadingBalance, setLoadingBalance] =
+    useState(true);
+
+  const [loadingTransactions, setLoadingTransactions] =
     useState(true);
 
   const [balanceError, setBalanceError] =
     useState<string | null>(null);
 
-  const refreshData = async () => {
-    setLoading(true);
+  const [transactionError, setTransactionError] =
+    useState<string | null>(null);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  /*
+   * ---------------------------------------------------------
+   * Load wallet balance
+   * ---------------------------------------------------------
+   */
+  const refreshBalance = useCallback(async () => {
+    if (!user?.id) {
+      setCdhBalance(null);
+      setLoadingBalance(false);
+      return;
+    }
+
+    setLoadingBalance(true);
     setBalanceError(null);
 
     try {
-      const { balance } =
-        await getWalletBalance();
+      const result = await getWalletBalance();
 
-      setCdhBalance(balance);
-    } catch (err) {
-      setBalanceError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load balance"
+      setCdhBalance(
+        Number(result.balance || 0)
       );
-    }
-
-    try {
-      const txns =
-        await getTransactions();
-
-      setTransactions(
-        txns as Transaction[]
-      );
-    } catch (err) {
+    } catch (error) {
       console.error(
-        "Unable to load transactions:",
-        err
+        "Unable to load wallet balance:",
+        error
+      );
+
+      setBalanceError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load wallet balance."
       );
     } finally {
-      setLoading(false);
+      setLoadingBalance(false);
     }
-  };
-
-  useEffect(() => {
-    if (user?.id) {
-      refreshData();
-    }
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  /*
+   * ---------------------------------------------------------
+   * Load transactions
+   * ---------------------------------------------------------
+   */
+  const refreshTransactions = useCallback(async () => {
+    if (!user?.id) {
+      setTransactions([]);
+      setLoadingTransactions(false);
+      return;
+    }
+
+    setLoadingTransactions(true);
+    setTransactionError(null);
+
+    try {
+      const result = await getTransactions(100);
+
+      /*
+       * The API transaction structure is compatible with
+       * the application's Transaction type for display.
+       */
+      setTransactions(
+        (result ?? []) as Transaction[]
+      );
+    } catch (error) {
+      console.error(
+        "Unable to load transactions:",
+        error
+      );
+
+      setTransactions([]);
+
+      setTransactionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load transactions."
+      );
+    } finally {
+      setLoadingTransactions(false);
+    }
+  }, [user?.id]);
+
+  /*
+   * ---------------------------------------------------------
+   * Refresh everything
+   * ---------------------------------------------------------
+   */
+  const refreshData = useCallback(async () => {
+    if (!user?.id) {
+      return;
+    }
+
+    setRefreshing(true);
+
+    await Promise.allSettled([
+      refreshBalance(),
+      refreshTransactions(),
+    ]);
+
+    setRefreshing(false);
+  }, [
+    user?.id,
+    refreshBalance,
+    refreshTransactions,
+  ]);
+
+  /*
+   * ---------------------------------------------------------
+   * Initial data load
+   * ---------------------------------------------------------
+   */
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    refreshData();
+  }, [user?.id, refreshData]);
+
+  /*
+   * ---------------------------------------------------------
+   * Handle Flutterwave return
+   *
+   * Flutterwave redirects the customer back to:
+   *
+   * /fund-wallet?status=successful&tx_ref=...
+   *
+   * The actual wallet credit must be performed by the
+   * server-side verification endpoint.
+   * ---------------------------------------------------------
+   */
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    const url = new URL(
+      window.location.href
+    );
+
+    const status =
+      url.searchParams.get("status");
+
+    const txRef =
+      url.searchParams.get("tx_ref") ||
+      url.searchParams.get("transaction_id");
+
+    /*
+     * Nothing to verify.
+     */
+    if (!status && !txRef) {
+      return;
+    }
+
+    /*
+     * Only process a Flutterwave return.
+     */
+    if (
+      status !== "successful" &&
+      status !== "completed" &&
+      !txRef
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const verifyPayment = async () => {
+      try {
+        if (!txRef) {
+          throw new Error(
+            "Payment reference was not returned by Flutterwave."
+          );
+        }
+
+        /*
+         * Server-side verification.
+         */
+        const result =
+          await verifyWalletFunding(
+            txRef
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!result.success) {
+          throw new Error(
+            result.message ||
+              "Payment verification failed."
+          );
+        }
+
+        /*
+         * Refresh wallet and transaction
+         * history after successful verification.
+         */
+        await refreshData();
+
+        /*
+         * Remove Flutterwave query parameters
+         * from the browser URL.
+         */
+        window.history.replaceState(
+          {},
+          document.title,
+          "/"
+        );
+
+        alert(
+          result.message ||
+            "Wallet funded successfully."
+        );
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(
+          "Flutterwave verification error:",
+          error
+        );
+
+        /*
+         * Keep the URL clean even when verification
+         * fails.
+         */
+        window.history.replaceState(
+          {},
+          document.title,
+          "/"
+        );
+
+        alert(
+          error instanceof Error
+            ? error.message
+            : "Payment verification failed. Please contact support."
+        );
+      }
+    };
+
+    verifyPayment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, refreshData]);
+
+  /*
+   * ---------------------------------------------------------
+   * Navigation
+   * ---------------------------------------------------------
+   */
+  const navigate = useCallback(
+    (nextView: View) => {
+      setView(nextView);
+      onNavigate(nextView);
+    },
+    [setView, onNavigate]
+  );
 
   const navItems: {
     key: View;
@@ -143,7 +378,9 @@ export default function AppShell({
   return (
     <div className="min-h-screen bg-slate-950 text-white flex">
 
-      {/* Desktop Sidebar */}
+      {/* =====================================================
+          DESKTOP SIDEBAR
+      ===================================================== */}
       <aside className="hidden lg:flex w-64 flex-col border-r border-slate-800/50 bg-slate-900/30 p-4 fixed h-screen">
 
         <div className="flex items-center gap-2 px-2 py-3 mb-6">
@@ -160,24 +397,27 @@ export default function AppShell({
         </div>
 
         <nav className="flex flex-col gap-1 flex-1">
-          {navItems.map((item) => (
-            <button
-              key={item.key}
-              onClick={() => {
-                setView(item.key);
-                onNavigate(item.key);
-              }}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
-                view === item.key
-                  ? "bg-emerald-500/15 text-emerald-400"
-                  : "text-slate-400 hover:text-white hover:bg-slate-800/50"
-              }`}
-            >
-              <item.icon className="w-5 h-5" />
+          {navItems.map((item) => {
+            const Icon = item.icon;
 
-              {item.label}
-            </button>
-          ))}
+            return (
+              <button
+                key={item.key}
+                onClick={() =>
+                  navigate(item.key)
+                }
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+                  view === item.key
+                    ? "bg-emerald-500/15 text-emerald-400"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+
+                {item.label}
+              </button>
+            );
+          })}
         </nav>
 
         <button
@@ -190,10 +430,14 @@ export default function AppShell({
         </button>
       </aside>
 
-      {/* Main Content */}
+      {/* =====================================================
+          MAIN CONTENT
+      ===================================================== */}
       <div className="flex-1 lg:ml-64">
 
-        {/* Mobile Header */}
+        {/* ===================================================
+            MOBILE HEADER
+        =================================================== */}
         <header className="lg:hidden sticky top-0 z-40 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/50 px-4 py-3 flex items-center justify-between">
 
           <div className="flex items-center gap-2">
@@ -212,6 +456,7 @@ export default function AppShell({
           <button
             onClick={signOut}
             className="text-slate-400 hover:text-red-400 transition p-2"
+            aria-label="Sign out"
           >
             <LogOut className="w-5 h-5" />
           </button>
@@ -219,21 +464,24 @@ export default function AppShell({
 
         <main className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto pb-28 lg:pb-8">
 
-          {/* Wallet Banner */}
-          <div className="bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-800 rounded-2xl p-5 mb-6 flex items-center justify-between">
+          {/* =================================================
+              WALLET BANNER
+          ================================================= */}
+          <div className="bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-800 rounded-2xl p-5 mb-6 flex items-center justify-between gap-4">
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
 
-              <div className="w-11 h-11 bg-emerald-500/15 rounded-xl flex items-center justify-center">
+              <div className="w-11 h-11 bg-emerald-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
                 <WalletIcon className="w-5 h-5 text-emerald-400" />
               </div>
 
-              <div>
+              <div className="min-w-0">
+
                 <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">
                   CheapDataHub Wallet
                 </div>
 
-                {loading ? (
+                {loadingBalance ? (
                   <div className="flex items-center gap-2 mt-1">
                     <Loader2 className="w-4 h-4 text-slate-500 animate-spin" />
 
@@ -242,23 +490,24 @@ export default function AppShell({
                     </span>
                   </div>
                 ) : balanceError ? (
-                  <div className="text-sm text-amber-400 mt-1">
+                  <div className="text-sm text-amber-400 mt-1 truncate">
                     {balanceError}
                   </div>
                 ) : (
                   <div className="text-2xl font-bold text-white">
-                    {formatNaira(cdhBalance ?? 0)}
+                    {formatNaira(
+                      cdhBalance ?? 0
+                    )}
                   </div>
                 )}
               </div>
             </div>
 
             <button
-              onClick={() => {
-                setView("fund-wallet");
-                onNavigate("fund-wallet");
-              }}
-              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl text-sm font-semibold transition"
+              onClick={() =>
+                navigate("fund-wallet")
+              }
+              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl text-sm font-semibold transition flex-shrink-0"
             >
               <Plus className="w-4 h-4" />
 
@@ -266,101 +515,150 @@ export default function AppShell({
             </button>
           </div>
 
-          {/* Dashboard */}
+          {/* =================================================
+              REFRESH
+          ================================================= */}
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={refreshData}
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 text-xs text-slate-500 hover:text-emerald-400 transition disabled:opacity-50"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${
+                  refreshing
+                    ? "animate-spin"
+                    : ""
+                }`}
+              />
+
+              Refresh
+            </button>
+          </div>
+
+          {/* =================================================
+              DASHBOARD
+          ================================================= */}
           {view === "dashboard" && (
             <DashboardView
               transactions={transactions}
-              loading={loading}
-              onNavigate={onNavigate}
+              loading={loadingTransactions}
+              transactionError={
+                transactionError
+              }
+              onNavigate={navigate}
             />
           )}
 
-          {/* Fund Wallet */}
+          {/* =================================================
+              FUND WALLET
+          ================================================= */}
           {view === "fund-wallet" && (
             <FundWalletView
               onSuccess={refreshData}
-              user={user}
+              user={user as UserLike | null}
             />
           )}
 
-          {/* Airtime */}
+          {/* =================================================
+              AIRTIME
+          ================================================= */}
           {view === "airtime" && (
             <AirtimeView
               onSuccess={refreshData}
             />
           )}
 
-          {/* Data */}
+          {/* =================================================
+              DATA
+          ================================================= */}
           {view === "data" && (
             <DataView
               onSuccess={refreshData}
             />
           )}
 
-          {/* Transactions */}
+          {/* =================================================
+              TRANSACTIONS
+          ================================================= */}
           {view === "transactions" && (
             <TransactionsView
               transactions={transactions}
-              loading={loading}
+              loading={loadingTransactions}
+              error={transactionError}
+              onRetry={refreshTransactions}
             />
           )}
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation */}
+      {/* =====================================================
+          MOBILE BOTTOM NAVIGATION
+      ===================================================== */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/50 flex items-center justify-around px-1 py-2 overflow-x-auto">
 
-        {navItems.map((item) => (
-          <button
-            key={item.key}
-            onClick={() => {
-              setView(item.key);
-              onNavigate(item.key);
-            }}
-            className={`flex flex-col items-center gap-1 min-w-[60px] px-2 py-1.5 rounded-lg transition ${
-              view === item.key
-                ? "text-emerald-400"
-                : "text-slate-500"
-            }`}
-          >
-            <item.icon className="w-5 h-5" />
+        {navItems.map((item) => {
+          const Icon = item.icon;
 
-            <span className="text-[9px] font-medium">
-              {item.label}
-            </span>
-          </button>
-        ))}
+          return (
+            <button
+              key={item.key}
+              onClick={() =>
+                navigate(item.key)
+              }
+              className={`flex flex-col items-center gap-1 min-w-[60px] px-2 py-1.5 rounded-lg transition ${
+                view === item.key
+                  ? "text-emerald-400"
+                  : "text-slate-500"
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+
+              <span className="text-[9px] font-medium">
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
       </nav>
     </div>
   );
 }
 
 
-/* =====================================================
+/* =========================================================
    DASHBOARD
-===================================================== */
+========================================================= */
 
 function DashboardView({
   transactions,
   loading,
+  transactionError,
   onNavigate,
 }: {
   transactions: Transaction[];
   loading: boolean;
+  transactionError: string | null;
   onNavigate: (v: View) => void;
 }) {
-  const recent = transactions.slice(0, 5);
+  const recent =
+    transactions.slice(0, 5);
 
-  const successCount = transactions.filter(
-    (t) => t.status === "success"
-  ).length;
+  const successCount =
+    transactions.filter(
+      (t) => t.status === "success"
+    ).length;
 
-  const totalSpent = transactions
-    .filter((t) => t.status === "success")
-    .reduce(
-      (sum, t) => sum + Number(t.amount),
-      0
-    );
+  const totalSpent =
+    transactions
+      .filter(
+        (t) => t.status === "success"
+      )
+      .reduce(
+        (sum, t) =>
+          sum + Number(t.amount || 0),
+        0
+      );
 
   return (
     <div>
@@ -428,7 +726,9 @@ function DashboardView({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
 
         <button
-          onClick={() => onNavigate("fund-wallet")}
+          onClick={() =>
+            onNavigate("fund-wallet")
+          }
           className="bg-gradient-to-br from-blue-500/15 to-blue-500/5 border border-blue-500/20 rounded-2xl p-5 text-left hover:border-blue-500/40 transition group"
         >
           <WalletIcon className="w-6 h-6 text-blue-400 mb-3 group-hover:scale-110 transition" />
@@ -443,7 +743,9 @@ function DashboardView({
         </button>
 
         <button
-          onClick={() => onNavigate("airtime")}
+          onClick={() =>
+            onNavigate("airtime")
+          }
           className="bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5 text-left hover:border-emerald-500/40 transition group"
         >
           <Smartphone className="w-6 h-6 text-emerald-400 mb-3 group-hover:scale-110 transition" />
@@ -458,7 +760,9 @@ function DashboardView({
         </button>
 
         <button
-          onClick={() => onNavigate("data")}
+          onClick={() =>
+            onNavigate("data")
+          }
           className="bg-gradient-to-br from-teal-500/15 to-teal-500/5 border border-teal-500/20 rounded-2xl p-5 text-left hover:border-teal-500/40 transition group"
         >
           <Wifi className="w-6 h-6 text-teal-400 mb-3 group-hover:scale-110 transition" />
@@ -481,7 +785,9 @@ function DashboardView({
           </h2>
 
           <button
-            onClick={() => onNavigate("transactions")}
+            onClick={() =>
+              onNavigate("transactions")
+            }
             className="text-sm text-emerald-400 hover:text-emerald-300 font-medium"
           >
             View all
@@ -492,6 +798,10 @@ function DashboardView({
           <div className="flex items-center justify-center py-10">
             <Loader2 className="w-6 h-6 text-slate-500 animate-spin" />
           </div>
+        ) : transactionError ? (
+          <TransactionError
+            message={transactionError}
+          />
         ) : recent.length === 0 ? (
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-10 text-center">
             <Receipt className="w-10 h-10 text-slate-600 mx-auto mb-3" />
@@ -516,16 +826,16 @@ function DashboardView({
 }
 
 
-/* =====================================================
+/* =========================================================
    FUND WALLET
-===================================================== */
+========================================================= */
 
 function FundWalletView({
   onSuccess,
   user,
 }: {
   onSuccess: () => Promise<void>;
-  user: any;
+  user: UserLike | null;
 }) {
   const [amount, setAmount] =
     useState("");
@@ -551,11 +861,20 @@ function FundWalletView({
       Number(amount);
 
     if (
-      !paymentAmount ||
+      !Number.isFinite(paymentAmount) ||
       paymentAmount < 100
     ) {
       setError(
         "Minimum wallet funding amount is ₦100."
+      );
+      return;
+    }
+
+    if (
+      paymentAmount > 5_000_000
+    ) {
+      setError(
+        "Maximum wallet funding amount is ₦5,000,000."
       );
       return;
     }
@@ -567,137 +886,65 @@ function FundWalletView({
       return;
     }
 
-    const publicKey =
-      import.meta.env
-        .VITE_FLUTTERWAVE_PUBLIC_KEY;
-
-    if (!publicKey) {
-      setError(
-        "Flutterwave public key is missing. Add VITE_FLUTTERWAVE_PUBLIC_KEY to your environment variables."
-      );
-      return;
-    }
-
-    if (!window.FlutterwaveCheckout) {
-      setError(
-        "Flutterwave payment script is not loaded."
-      );
-      return;
-    }
-
     setProcessing(true);
 
     try {
       /*
-       * Create/initialize the funding
-       * transaction through your backend.
+       * The Edge Function creates the Flutterwave
+       * hosted checkout and returns payment_link.
+       *
+       * DO NOT expose the Flutterwave secret key
+       * in the browser.
        */
       const initialized =
         await initializeWalletFunding({
           amount: paymentAmount,
-          email: user.email,
+          email:
+            user.email ?? undefined,
           name:
             user.user_metadata?.full_name ||
-            "",
+            user.user_metadata?.name ||
+            "CheapDataHub Customer",
+          phone:
+            user.phone ||
+            user.user_metadata?.phone ||
+            undefined,
         });
 
-      const txRef =
-        initialized.reference ||
-        `CDH-${Date.now()}-${user.id.slice(0, 8)}`;
+      if (
+        !initialized.success
+      ) {
+        throw new Error(
+          initialized.message ||
+            "Unable to initialize payment."
+        );
+      }
 
-      window.FlutterwaveCheckout({
-        public_key: publicKey,
+      const paymentLink =
+        initialized.payment_link ||
+        initialized.checkout_url;
 
-        tx_ref: txRef,
+      if (!paymentLink) {
+        throw new Error(
+          "Flutterwave did not return a payment link."
+        );
+      }
 
-        amount: paymentAmount,
-
-        currency: "NGN",
-
-        payment_options:
-          "card,account,banktransfer,ussd",
-
-        customer: {
-          email:
-            user.email ||
-            "customer@cheapdatahub.com",
-
-          name:
-            user.user_metadata?.full_name ||
-            "CheapDataHub Customer",
-        },
-
-        customizations: {
-          title: "CheapDataHub",
-          description:
-            "Fund CheapDataHub Wallet",
-        },
-
-        callback: async (
-          payment: any
-        ) => {
-          try {
-            /*
-             * Verify payment server-side.
-             *
-             * Never credit the wallet
-             * directly from the browser.
-             */
-            const reference =
-              payment?.tx_ref ||
-              txRef;
-
-            const result =
-              await verifyWalletFunding(
-                reference
-              );
-
-            if (!result.success) {
-              throw new Error(
-                result.message ||
-                  "Payment verification failed."
-              );
-            }
-
-            await onSuccess();
-
-            setProcessing(false);
-
-            setAmount("");
-
-            alert(
-              result.message ||
-                "Wallet funded successfully."
-            );
-          } catch (err) {
-            console.error(
-              "Wallet verification error:",
-              err
-            );
-
-            setError(
-              err instanceof Error
-                ? err.message
-                : "Payment was received but verification failed. Please contact support."
-            );
-
-            setProcessing(false);
-          }
-        },
-
-        onclose: () => {
-          setProcessing(false);
-        },
-      });
-    } catch (err) {
+      /*
+       * Redirect to Flutterwave's hosted checkout.
+       */
+      window.location.assign(
+        paymentLink
+      );
+    } catch (error) {
       console.error(
         "Wallet funding error:",
-        err
+        error
       );
 
       setError(
-        err instanceof Error
-          ? err.message
+        error instanceof Error
+          ? error.message
           : "Unable to initialize payment."
       );
 
@@ -740,14 +987,16 @@ function FundWalletView({
           <input
             type="number"
             min="100"
+            max="5000000"
             value={amount}
-            onChange={(e) =>
+            onChange={(event) =>
               setAmount(
-                e.target.value
+                event.target.value
               )
             }
-            placeholder="0.00"
-            className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-4 py-4 text-lg font-semibold outline-none focus:border-emerald-500 transition"
+            placeholder="100"
+            disabled={processing}
+            className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-4 py-4 text-lg font-semibold outline-none focus:border-emerald-500 transition disabled:opacity-60"
           />
         </div>
 
@@ -756,12 +1005,14 @@ function FundWalletView({
             (value) => (
               <button
                 key={value}
+                type="button"
+                disabled={processing}
                 onClick={() =>
                   setAmount(
                     String(value)
                   )
                 }
-                className="border border-slate-700 hover:border-emerald-500 hover:bg-emerald-500/10 rounded-lg py-2 text-sm transition"
+                className="border border-slate-700 hover:border-emerald-500 hover:bg-emerald-500/10 rounded-lg py-2 text-sm transition disabled:opacity-50"
               >
                 {formatNaira(value)}
               </button>
@@ -781,6 +1032,7 @@ function FundWalletView({
         )}
 
         <button
+          type="button"
           onClick={handlePayment}
           disabled={processing}
           className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-slate-950 font-bold rounded-xl py-4 flex items-center justify-center gap-2 transition"
@@ -789,7 +1041,7 @@ function FundWalletView({
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
 
-              Processing...
+              Redirecting to Flutterwave...
             </>
           ) : (
             <>
@@ -809,9 +1061,9 @@ function FundWalletView({
 }
 
 
-/* =====================================================
+/* =========================================================
    TRANSACTION ROW
-===================================================== */
+========================================================= */
 
 function TransactionRow({
   tx,
@@ -846,9 +1098,26 @@ function TransactionRow({
   const cfg =
     statusConfig[
       tx.status as keyof typeof statusConfig
-    ] || statusConfig.pending;
+    ] ||
+    statusConfig.pending;
 
   const Icon = icon;
+  const StatusIcon = cfg.icon;
+
+  const amount =
+    Number(tx.amount || 0);
+
+  const date = tx.created_at
+    ? new Date(
+        tx.created_at
+      ).toLocaleDateString(
+        "en-NG",
+        {
+          month: "short",
+          day: "numeric",
+        }
+      )
+    : "";
 
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center gap-3">
@@ -859,46 +1128,43 @@ function TransactionRow({
 
       <div className="flex-1 min-w-0">
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+
           <span className="font-medium text-sm">
-            {tx.network}
+            {tx.network || "Transaction"}
           </span>
 
           <span
-            className={`text-xs px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.color} font-medium`}
+            className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.color} font-medium`}
           >
+            <StatusIcon className="w-3 h-3" />
+
             {tx.status}
           </span>
         </div>
 
         <div className="text-xs text-slate-500 mt-0.5 truncate">
           {tx.type === "data"
-            ? tx.plan_name
+            ? tx.plan_name ||
+              "Data purchase"
             : `Airtime ${formatNaira(
-                Number(tx.amount)
-              )}`}{" "}
-          · {tx.phone_number}
+                amount
+              )}`}
+
+          {tx.phone_number
+            ? ` · ${tx.phone_number}`
+            : ""}
         </div>
       </div>
 
       <div className="text-right flex-shrink-0">
 
         <div className="font-semibold text-sm">
-          {formatNaira(
-            Number(tx.amount)
-          )}
+          {formatNaira(amount)}
         </div>
 
         <div className="text-xs text-slate-500">
-          {new Date(
-            tx.created_at
-          ).toLocaleDateString(
-            "en-NG",
-            {
-              month: "short",
-              day: "numeric",
-            }
-          )}
+          {date}
         </div>
       </div>
     </div>
@@ -906,31 +1172,115 @@ function TransactionRow({
 }
 
 
-/* =====================================================
+/* =========================================================
+   TRANSACTION ERROR
+========================================================= */
+
+function TransactionError({
+  message,
+}: {
+  message: string;
+}) {
+  return (
+    <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-5">
+
+      <div className="flex items-start gap-3">
+
+        <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+
+        <div>
+          <p className="font-medium text-red-300">
+            Unable to load transactions
+          </p>
+
+          <p className="text-sm text-red-300/70 mt-1 break-words">
+            {message}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/* =========================================================
    TRANSACTIONS
-===================================================== */
+========================================================= */
 
 function TransactionsView({
   transactions,
   loading,
+  error,
+  onRetry,
 }: {
   transactions: Transaction[];
   loading: boolean;
+  error: string | null;
+  onRetry: () => Promise<void>;
 }) {
   return (
     <div>
 
-      <h1 className="text-2xl font-bold mb-1">
-        Transaction History
-      </h1>
+      <div className="flex items-start justify-between gap-4 mb-6">
 
-      <p className="text-slate-400 text-sm mb-6">
-        All your purchases and transactions.
-      </p>
+        <div>
+          <h1 className="text-2xl font-bold mb-1">
+            Transaction History
+          </h1>
+
+          <p className="text-slate-400 text-sm">
+            All your purchases and transactions.
+          </p>
+        </div>
+
+        <button
+          onClick={onRetry}
+          disabled={loading}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-sm text-slate-400 hover:text-white transition disabled:opacity-50"
+        >
+          <RefreshCw
+            className={`w-4 h-4 ${
+              loading
+                ? "animate-spin"
+                : ""
+            }`}
+          />
+
+          Refresh
+        </button>
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-10">
           <Loader2 className="w-6 h-6 text-slate-500 animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6">
+
+          <div className="flex items-start gap-3">
+
+            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+
+            <div className="flex-1">
+
+              <p className="font-medium text-red-300">
+                Failed to fetch transactions
+              </p>
+
+              <p className="text-sm text-red-300/70 mt-1 break-words">
+                {error}
+              </p>
+
+              <button
+                onClick={onRetry}
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 hover:bg-red-500/20 transition text-sm"
+              >
+                <RefreshCw className="w-4 h-4" />
+
+                Try again
+              </button>
+            </div>
+          </div>
         </div>
       ) : transactions.length === 0 ? (
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-10 text-center">
@@ -956,14 +1306,14 @@ function TransactionsView({
 }
 
 
-/* =====================================================
+/* =========================================================
    AIRTIME
-===================================================== */
+========================================================= */
 
 function AirtimeView({
   onSuccess,
 }: {
-  onSuccess: () => void;
+  onSuccess: () => Promise<void>;
 }) {
   return (
     <AirtimePurchase
@@ -973,14 +1323,14 @@ function AirtimeView({
 }
 
 
-/* =====================================================
+/* =========================================================
    DATA
-===================================================== */
+========================================================= */
 
 function DataView({
   onSuccess,
 }: {
-  onSuccess: () => void;
+  onSuccess: () => Promise<void>;
 }) {
   return (
     <DataPurchase
