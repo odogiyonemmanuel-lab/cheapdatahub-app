@@ -35,18 +35,19 @@ function LoadingScreen() {
 function AppContent() {
   const { user, loading } = useAuth();
 
-  const [screen, setScreen] =
-    useState<Screen>("landing");
+  const [screen, setScreen] = useState<Screen>("landing");
 
-  const [view, setView] =
-    useState<View>("dashboard");
+  const [view, setView] = useState<View>("dashboard");
 
+  /*
+   * Check whether the current URL is /admin.
+   */
   const isAdminRoute =
     window.location.pathname === "/admin" ||
     window.location.pathname === "/admin/";
 
   /*
-   * Wait for Supabase authentication.
+   * Wait for authentication to load.
    */
   if (loading) {
     return <LoadingScreen />;
@@ -72,9 +73,9 @@ function AppContent() {
     }
 
     /*
-     * AdminDashboard should check
-     * the cdh_admins table to verify
-     * that this user is an admin.
+     * AdminDashboard should verify
+     * that the logged-in user exists
+     * in the cdh_admins table.
      */
     return <AdminDashboard />;
   }
@@ -99,7 +100,7 @@ function AppContent() {
 
   /*
    * ==============================
-   * AUTHENTICATION
+   * AUTHENTICATION SCREEN
    * ==============================
    */
   if (screen === "auth") {
