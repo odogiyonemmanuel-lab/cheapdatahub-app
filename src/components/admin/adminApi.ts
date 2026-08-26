@@ -1,3 +1,4 @@
+```ts
 import { supabase } from "@/lib/supabase";
 
 /* =====================================================
@@ -57,8 +58,13 @@ export type PricingRow = {
 
 /* =====================================================
    ADMIN CHECK
-   IMPORTANT:
-   Your actual table is cdh_admins
+
+   Actual admin table:
+   cdh_admins
+
+   Columns:
+   - user_id
+   - created_at
 ===================================================== */
 
 async function requireAdmin() {
@@ -253,23 +259,35 @@ export async function getAdminTransactions(
 
 /* =====================================================
    PRICING
+
    Actual database table:
    cdh_product_pricing
 
    Actual columns:
-   id
-   provider_id
-   network
-   plan_name
-   data_size
-   validity
-   provider_cost
-   selling_price
-   active
-   featured
-   sort_order
-   created_at
-   updated_at
+   - id
+   - provider_id
+   - network
+   - plan_name
+   - data_size
+   - validity
+   - provider_cost
+   - selling_price
+   - active
+   - featured
+   - sort_order
+   - created_at
+   - updated_at
+
+   IMPORTANT:
+   Do NOT use:
+   - product_type
+   - product_id
+   - plan_code
+   - customer_price
+   - profit
+   - is_active
+
+   Those columns do not exist in the database.
 ===================================================== */
 
 export async function getPricing(): Promise<PricingRow[]> {
@@ -347,6 +365,11 @@ export async function getPricing(): Promise<PricingRow[]> {
 
 /* =====================================================
    UPDATE PRICING
+
+   Database columns used:
+   - selling_price
+   - active
+   - updated_at
 ===================================================== */
 
 export async function updatePricing(
@@ -386,4 +409,152 @@ export async function updatePricing(
     );
   }
 
-  const provider
+  const providerCost = Number(
+    existing?.provider_cost ?? 0
+  );
+
+  const { error } = await supabase
+    .from("cdh_product_pricing")
+    .update({
+      selling_price: price,
+
+      active: Boolean(isActive),
+
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) {
+    throw new Error(
+      `Unable to update pricing: ${error.message}`
+    );
+  }
+
+  return true;
+}
+
+/* =====================================================
+   ADMIN WALLET ADJUSTMENT
+===================================================== */
+
+export async function adjustWallet(
+  userId: string,
+  amount: number,
+  reason: string
+) {
+  await requireAdmin();
+
+  if (!userId) {
+    throw new Error(
+      "User ID is required."
+    );
+  }
+
+  const walletAmount = Number(amount);
+
+  if (
+    !Number.isFinite(walletAmount) ||
+    walletAmount === 0
+  ) {
+    throw new Error(
+      "Enter a valid non-zero amount."
+    );
+  }
+
+  const walletReason =
+    reason.trim();
+
+  if (!walletReason) {
+    throw new Error(
+      "A reason is required."
+    );
+  }
+
+  const { data, error } =
+    await supabase.rpc(
+      "admin_adjust_wallet",
+      {
+        p_user_id: userId,
+
+        p_amount:
+          walletAmount,
+
+        p_reason:
+          walletReason,
+      }
+    );
+
+  if (error) {
+    throw new Error(
+      `Wallet adjustment failed: ${error.message}`
+    );
+  }
+
+  return data;
+}
+
+/* =====================================================
+   ADMIN ACCESS
+===================================================== */
+
+export async function setAdmin(
+  userId: string,
+  enabled: boolean
+) {
+  await requireAdmin();
+
+  if (!userId) {
+    throw new Error(
+      "User ID is required."
+    );
+  }
+
+  /*
+   * IMPORTANT:
+   * Use cdh_admins, not admin_users.
+   */
+
+  if (enabled) {
+    const { error } =
+      await supabase
+        .from("cdh_admins")
+        .upsert(
+          {
+            user_id: userId,
+          },
+          {
+            onConflict:
+              "user_id",
+          }
+        );
+
+    if (error) {
+      throw new Error(
+        `Unable to grant admin access: ${error.message}`
+      );
+    }
+
+    return true;
+  }
+
+  const { error } =
+    await supabase
+      .from("cdh_admins")
+      .delete()
+      .eq(
+        "user_id",
+        userId
+      );
+
+  if (error) {
+    throw new Error(
+      `Unable to remove admin access: ${error.message}`
+    );
+  }
+
+  return true;
+}
+```
+
+**Important:** this version removes the `product_type` query entirely and uses your actual `cdh_product_pricing` columns (`selling_price` and `active`). After replacing the whole file, **save it and restart your dev server**, then refresh the Admin Dashboard.
