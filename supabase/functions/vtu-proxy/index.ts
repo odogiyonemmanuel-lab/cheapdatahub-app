@@ -15,486 +15,650 @@ function jsonResponse(
   data: unknown,
   status = 200,
 ) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "application/json",
+  return new Response(
+    JSON.stringify(data),
+    {
+      status,
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+      },
     },
-  });
+  );
 }
 
+/**
+ * Extract the route after vtu-proxy.
+ *
+ * Examples:
+ *
+ * /vtu-proxy/wallet/fund
+ * -> wallet/fund
+ *
+ * /functions/v1/vtu-proxy/wallet/fund
+ * -> wallet/fund
+ */
 function getPath(req: Request) {
   const url = new URL(req.url);
 
   return url.pathname
-    .replace(/^\/functions\/v1\/vtu-proxy\/?/, "")
+    .replace(
+      /^\/functions\/v1\/vtu-proxy\/?/,
+      "",
+    )
+    .replace(
+      /^\/vtu-proxy\/?/,
+      "",
+    )
     .replace(/^\/+|\/+$/g, "");
 }
 
-function generateReference(userId: string) {
+function generateReference(
+  userId: string,
+) {
   return (
-    `CDH-${userId.slice(0, 8)}-${Date.now()}-${crypto
+    `CDH-${userId.slice(
+      0,
+      8,
+    )}-${Date.now()}-${crypto
       .randomUUID()
       .replaceAll("-", "")
       .slice(0, 8)}`
   ).toUpperCase();
 }
 
-Deno.serve(async (req: Request) => {
-  /*
-   * ---------------------------------------------------------
-   * CORS
-   * ---------------------------------------------------------
-   */
-
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders,
-    });
-  }
-
-  try {
+Deno.serve(
+  async (req: Request) => {
     /*
-     * ---------------------------------------------------------
-     * Environment variables
-     * ---------------------------------------------------------
+     * ==========================================
+     * CORS PREFLIGHT
+     * ==========================================
      */
 
-    const supabaseUrl =
-      Deno.env.get("SUPABASE_URL");
-
-    const serviceRoleKey =
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    const flutterwaveSecretKey =
-      Deno.env.get("FLW_SECRET_KEY");
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return jsonResponse(
-        {
-          error:
-            "Supabase server configuration is missing",
-        },
-        500,
-      );
+    if (req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: corsHeaders,
+      });
     }
 
-    if (!flutterwaveSecretKey) {
-      return jsonResponse(
-        {
-          error:
-            "Flutterwave is not configured on the server",
-        },
-        500,
-      );
-    }
-
-    /*
-     * ---------------------------------------------------------
-     * Supabase admin client
-     * ---------------------------------------------------------
-     */
-
-    const supabase = createClient(
-      supabaseUrl,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
-    );
-
-    /*
-     * ---------------------------------------------------------
-     * Authenticate user
-     * ---------------------------------------------------------
-     */
-
-    const authHeader =
-      req.headers.get("Authorization");
-
-    if (!authHeader) {
-      return jsonResponse(
-        {
-          error:
-            "Missing authorization header",
-        },
-        401,
-      );
-    }
-
-    const token = authHeader.replace(
-      /^Bearer\s+/i,
-      "",
-    );
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return jsonResponse(
-        {
-          error: "Unauthorized",
-        },
-        401,
-      );
-    }
-
-    /*
-     * ---------------------------------------------------------
-     * Determine requested endpoint
-     * ---------------------------------------------------------
-     */
-
-    const path = getPath(req);
-
-    console.log(
-      "vtu-proxy endpoint:",
-      path,
-      "user:",
-      user.id,
-    );
-
-    /*
-     * =========================================================
-     * WALLET FUNDING
-     * =========================================================
-     */
-
-    if (
-      path === "wallet/fund" ||
-      path === "wallet/fund/"
-    ) {
-      if (req.method !== "POST") {
-        return jsonResponse(
-          {
-            error: "Method not allowed",
-          },
-          405,
-        );
-      }
-
-      const body = await req
-        .json()
-        .catch(() => null);
-
-      if (!body) {
-        return jsonResponse(
-          {
-            error: "Invalid request body",
-          },
-          400,
-        );
-      }
-
-      const amount = Number(body.amount);
-
+    try {
       /*
-       * Validate amount
+       * ==========================================
+       * ENVIRONMENT VARIABLES
+       * ==========================================
        */
 
-      if (
-        !Number.isFinite(amount) ||
-        amount <= 0
-      ) {
+      const supabaseUrl =
+        Deno.env.get("SUPABASE_URL");
+
+      const serviceRoleKey =
+        Deno.env.get(
+          "SUPABASE_SERVICE_ROLE_KEY",
+        );
+
+      const flutterwaveSecretKey =
+        Deno.env.get(
+          "FLW_SECRET_KEY",
+        );
+
+      if (!supabaseUrl) {
         return jsonResponse(
           {
             error:
-              "Enter a valid funding amount",
+              "SUPABASE_URL is missing",
           },
-          422,
+          500,
         );
       }
 
-      if (amount < 100) {
+      if (!serviceRoleKey) {
         return jsonResponse(
           {
             error:
-              "Minimum wallet funding amount is ₦100",
+              "SUPABASE_SERVICE_ROLE_KEY is missing",
           },
-          422,
+          500,
         );
       }
 
-      if (amount > 5_000_000) {
+      if (!flutterwaveSecretKey) {
         return jsonResponse(
           {
             error:
-              "Maximum wallet funding amount is ₦5,000,000",
-          },
-          422,
-        );
-      }
-
-      /*
-       * Customer information
-       */
-
-      const email =
-        user.email ||
-        body.email ||
-        "";
-
-      if (!email) {
-        return jsonResponse(
-          {
-            error:
-              "Your account does not have an email address",
-          },
-          422,
-        );
-      }
-
-      const fullName =
-        user.user_metadata?.full_name ||
-        user.user_metadata?.name ||
-        "CheapDataHub Customer";
-
-      const phone =
-        user.phone ||
-        body.phone ||
-        "";
-
-      /*
-       * Generate unique reference
-       */
-
-      const reference =
-        generateReference(user.id);
-
-      /*
-       * -------------------------------------------------------
-       * Create PENDING deposit
-       *
-       * IMPORTANT:
-       * Do NOT credit wallet here.
-       * -------------------------------------------------------
-       *
-       * This assumes your cdh_deposits table has these
-       * standard columns.
-       */
-
-      const { error: depositError } =
-        await supabase
-          .from("cdh_deposits")
-          .insert({
-            user_id: user.id,
-            amount,
-            reference,
-            status: "pending",
-            provider: "flutterwave",
-          });
-
-      if (depositError) {
-        console.error(
-          "cdh_deposits insert error:",
-          depositError,
-        );
-
-        return jsonResponse(
-          {
-            error:
-              "Could not create wallet funding record",
-            details:
-              depositError.message,
+              "FLW_SECRET_KEY is missing",
           },
           500,
         );
       }
 
       /*
-       * -------------------------------------------------------
-       * Flutterwave checkout
-       * -------------------------------------------------------
+       * ==========================================
+       * SUPABASE ADMIN CLIENT
+       * ==========================================
        */
 
-      const origin =
-        req.headers.get("origin") || "";
-
-      const redirectUrl =
-        body.redirect_url ||
-        `${origin}/fund-wallet`;
-
-      const flutterwaveResponse =
-        await fetch(
-          `${FLUTTERWAVE_BASE_URL}/payments`,
-          {
-            method: "POST",
-
-            headers: {
-              Authorization:
-                `Bearer ${flutterwaveSecretKey}`,
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              tx_ref: reference,
-
-              amount,
-
-              currency: "NGN",
-
-              redirect_url:
-                redirectUrl,
-
-              customer: {
-                email,
-                name: fullName,
-                phonenumber:
-                  phone || undefined,
-              },
-
-              customizations: {
-                title:
-                  "CheapDataHub Wallet Funding",
-
-                description:
-                  `Fund your CheapDataHub wallet with ₦${amount.toLocaleString(
-                    "en-NG",
-                  )}`,
-
-                logo: "",
-              },
-
-              payment_options:
-                "card,banktransfer,ussd,account,internetbanking,nqr,opay",
-
-              meta: {
-                user_id: user.id,
-                wallet_funding: true,
-                reference,
-              },
-            }),
+      const supabase = createClient(
+        supabaseUrl,
+        serviceRoleKey,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
           },
-        );
-
-      const flutterwaveData =
-        await flutterwaveResponse.json();
+        },
+      );
 
       /*
-       * -------------------------------------------------------
-       * Handle Flutterwave failure
-       * -------------------------------------------------------
+       * ==========================================
+       * AUTHENTICATE USER
+       * ==========================================
+       */
+
+      const authHeader =
+        req.headers.get(
+          "Authorization",
+        );
+
+      if (!authHeader) {
+        return jsonResponse(
+          {
+            error:
+              "Missing authorization header",
+          },
+          401,
+        );
+      }
+
+      const token =
+        authHeader.replace(
+          /^Bearer\s+/i,
+          "",
+        );
+
+      const {
+        data: {
+          user,
+        },
+        error: authError,
+      } =
+        await supabase.auth.getUser(
+          token,
+        );
+
+      if (authError || !user) {
+        console.error(
+          "Authentication error:",
+          authError,
+        );
+
+        return jsonResponse(
+          {
+            error:
+              "Unauthorized",
+          },
+          401,
+        );
+      }
+
+      /*
+       * ==========================================
+       * DETERMINE ENDPOINT
+       * ==========================================
+       */
+
+      const path =
+        getPath(req);
+
+      console.log(
+        "vtu-proxy endpoint:",
+        path,
+      );
+
+      console.log(
+        "Authenticated user:",
+        user.id,
+      );
+
+      /*
+       * ==========================================
+       * WALLET FUNDING
+       * ==========================================
        */
 
       if (
-        !flutterwaveResponse.ok ||
-        flutterwaveData.status !==
-          "success"
+        path === "wallet/fund"
       ) {
-        console.error(
-          "Flutterwave initialization failed:",
+        if (
+          req.method !== "POST"
+        ) {
+          return jsonResponse(
+            {
+              error:
+                "Method not allowed",
+            },
+            405,
+          );
+        }
+
+        const body =
+          await req
+            .json()
+            .catch(() => null);
+
+        if (!body) {
+          return jsonResponse(
+            {
+              error:
+                "Invalid request body",
+            },
+            400,
+          );
+        }
+
+        const amount =
+          Number(body.amount);
+
+        /*
+         * Validate amount
+         */
+
+        if (
+          !Number.isFinite(
+            amount,
+          ) ||
+          amount <= 0
+        ) {
+          return jsonResponse(
+            {
+              error:
+                "Enter a valid funding amount",
+            },
+            422,
+          );
+        }
+
+        if (
+          amount < 100
+        ) {
+          return jsonResponse(
+            {
+              error:
+                "Minimum wallet funding amount is ₦100",
+            },
+            422,
+          );
+        }
+
+        if (
+          amount > 5_000_000
+        ) {
+          return jsonResponse(
+            {
+              error:
+                "Maximum wallet funding amount is ₦5,000,000",
+            },
+            422,
+          );
+        }
+
+        /*
+         * ==========================================
+         * CUSTOMER INFORMATION
+         * ==========================================
+         */
+
+        const email =
+          user.email ||
+          body.email ||
+          "";
+
+        if (!email) {
+          return jsonResponse(
+            {
+              error:
+                "Your account does not have an email address",
+            },
+            422,
+          );
+        }
+
+        const fullName =
+          user.user_metadata
+            ?.full_name ||
+          user.user_metadata
+            ?.name ||
+          body.name ||
+          "CheapDataHub Customer";
+
+        const phone =
+          user.phone ||
+          body.phone ||
+          "";
+
+        /*
+         * ==========================================
+         * GENERATE PAYMENT REFERENCE
+         * ==========================================
+         */
+
+        const reference =
+          generateReference(
+            user.id,
+          );
+
+        console.log(
+          "Creating wallet funding:",
+          {
+            reference,
+            userId:
+              user.id,
+            amount,
+          },
+        );
+
+        /*
+         * ==========================================
+         * CREATE PENDING DEPOSIT
+         *
+         * Wallet is NOT credited here.
+         * ==========================================
+         */
+
+        const {
+          error: depositError,
+        } = await supabase
+          .from("cdh_deposits")
+          .insert({
+            user_id:
+              user.id,
+
+            amount,
+
+            reference,
+
+            status:
+              "pending",
+
+            provider:
+              "flutterwave",
+          });
+
+        if (depositError) {
+          console.error(
+            "Deposit insert error:",
+            depositError,
+          );
+
+          return jsonResponse(
+            {
+              error:
+                "Could not create wallet funding record",
+
+              details:
+                depositError.message,
+            },
+            500,
+          );
+        }
+
+        /*
+         * ==========================================
+         * REDIRECT URL
+         * ==========================================
+         */
+
+        const origin =
+          req.headers.get(
+            "origin",
+          );
+
+        /*
+         * Send Flutterwave back to your application.
+         *
+         * The frontend can then verify
+         * the transaction.
+         */
+
+        const redirectUrl =
+          body.redirect_url ||
+          (
+            origin
+              ? `${origin}/`
+              : "https://cheapdatahub-app.vercel.app/"
+          );
+
+        /*
+         * ==========================================
+         * INITIALIZE FLUTTERWAVE PAYMENT
+         * ==========================================
+         */
+
+        const flutterwaveResponse =
+          await fetch(
+            `${FLUTTERWAVE_BASE_URL}/payments`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                Authorization:
+                  `Bearer ${flutterwaveSecretKey}`,
+
+                "Content-Type":
+                  "application/json",
+              },
+
+              body:
+                JSON.stringify({
+                  tx_ref:
+                    reference,
+
+                  amount,
+
+                  currency:
+                    "NGN",
+
+                  redirect_url:
+                    redirectUrl,
+
+                  customer: {
+                    email,
+
+                    name:
+                      fullName,
+
+                    phonenumber:
+                      phone ||
+                      undefined,
+                  },
+
+                  customizations: {
+                    title:
+                      "CheapDataHub",
+
+                    description:
+                      `Fund CheapDataHub wallet with ₦${amount.toLocaleString(
+                        "en-NG",
+                      )}`,
+                  },
+
+                  payment_options:
+                    "card,banktransfer,ussd,account",
+
+                  meta: {
+                    user_id:
+                      user.id,
+
+                    wallet_funding:
+                      true,
+
+                    reference,
+                  },
+                }),
+            },
+          );
+
+        let flutterwaveData:
+          | Record<
+              string,
+              any
+            >
+          | null = null;
+
+        try {
+          flutterwaveData =
+            await flutterwaveResponse.json();
+        } catch {
+          flutterwaveData =
+            null;
+        }
+
+        console.log(
+          "Flutterwave status:",
+          flutterwaveResponse.status,
+        );
+
+        console.log(
+          "Flutterwave response:",
           flutterwaveData,
         );
 
         /*
-         * Mark deposit as failed.
+         * ==========================================
+         * HANDLE FLUTTERWAVE FAILURE
+         * ==========================================
          */
 
-        await supabase
-          .from("cdh_deposits")
-          .update({
-            status: "failed",
-          })
-          .eq(
-            "reference",
-            reference,
-          )
-          .eq(
-            "user_id",
-            user.id,
+        if (
+          !flutterwaveResponse.ok ||
+          flutterwaveData?.status !==
+            "success"
+        ) {
+          await supabase
+            .from(
+              "cdh_deposits",
+            )
+            .update({
+              status:
+                "failed",
+            })
+            .eq(
+              "reference",
+              reference,
+            )
+            .eq(
+              "user_id",
+              user.id,
+            );
+
+          return jsonResponse(
+            {
+              error:
+                flutterwaveData?.message ||
+                "Unable to initialize Flutterwave payment",
+            },
+            502,
+          );
+        }
+
+        /*
+         * ==========================================
+         * GET FLUTTERWAVE PAYMENT LINK
+         * ==========================================
+         */
+
+        const paymentLink =
+          flutterwaveData
+            ?.data
+            ?.link;
+
+        if (!paymentLink) {
+          console.error(
+            "No Flutterwave payment link:",
+            flutterwaveData,
           );
 
+          await supabase
+            .from(
+              "cdh_deposits",
+            )
+            .update({
+              status:
+                "failed",
+            })
+            .eq(
+              "reference",
+              reference,
+            );
+
+          return jsonResponse(
+            {
+              error:
+                "Flutterwave did not return a payment link",
+            },
+            502,
+          );
+        }
+
+        /*
+         * ==========================================
+         * SUCCESS
+         * ==========================================
+         */
+
         return jsonResponse(
           {
-            error:
-              flutterwaveData.message ||
-              "Unable to initialize Flutterwave payment",
+            success:
+              true,
+
+            message:
+              "Payment initialized successfully",
+
+            reference,
+
+            payment_link:
+              paymentLink,
+
+            checkout_url:
+              paymentLink,
+
+            amount,
           },
-          502,
+          200,
         );
       }
 
       /*
-       * Flutterwave checkout URL
+       * ==========================================
+       * UNKNOWN ENDPOINT
+       * ==========================================
        */
 
-      const paymentLink =
-        flutterwaveData.data?.link;
+      return jsonResponse(
+        {
+          error:
+            `Unknown vtu-proxy endpoint: ${
+              path || "/"
+            }`,
+        },
+        404,
+      );
+    } catch (error) {
+      console.error(
+        "vtu-proxy error:",
+        error,
+      );
 
-      if (!paymentLink) {
-        console.error(
-          "Flutterwave did not return payment link:",
-          flutterwaveData,
-        );
-
-        return jsonResponse(
-          {
-            error:
-              "Flutterwave did not return a payment link",
-          },
-          502,
-        );
-      }
-
-      /*
-       * -------------------------------------------------------
-       * Return checkout link
-       * -------------------------------------------------------
-       */
-
-      return jsonResponse({
-        success: true,
-
-        message:
-          "Payment initialized successfully",
-
-        reference,
-
-        payment_link:
-          paymentLink,
-
-        checkout_url:
-          paymentLink,
-
-        amount,
-      });
+      return jsonResponse(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Internal server error",
+        },
+        500,
+      );
     }
-
-    /*
-     * =========================================================
-     * UNKNOWN ENDPOINT
-     * =========================================================
-     */
-
-    return jsonResponse(
-      {
-        error:
-          `Unknown vtu-proxy endpoint: ${path || "/"}`,
-      },
-      404,
-    );
-  } catch (error) {
-    console.error(
-      "vtu-proxy error:",
-      error,
-    );
-
-    return jsonResponse(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Internal server error",
-      },
-      500,
-    );
-  }
-});
+  },
+);
