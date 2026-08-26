@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
-import { getWalletBalance, getTransactions } from "@/lib/api";
+import {
+  getWalletBalance,
+  getTransactions,
+  initializeWalletFunding,
+  verifyWalletFunding,
+} from "@/lib/api";
 import { formatNaira } from "@/lib/dataPlans";
-import type { Transaction, Wallet } from "@/types";
+import type { Transaction } from "@/types";
 
 import {
   Zap,
@@ -50,51 +54,56 @@ export default function AppShell({
 }) {
   const { user, signOut } = useAuth();
 
-  const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [cdhBalance, setCdhBalance] = useState<number | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [cdhBalance, setCdhBalance] =
+    useState<number | null>(null);
+
+  const [transactions, setTransactions] =
+    useState<Transaction[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [balanceError, setBalanceError] =
+    useState<string | null>(null);
 
   const refreshData = async () => {
     setLoading(true);
     setBalanceError(null);
 
     try {
-      if (user?.id) {
-        const { data: walletData } = await supabase
-          .from("wallets")
-          .select("*")
-          .eq("user_id", user.id)
-          .maybeSingle();
+      const { balance } =
+        await getWalletBalance();
 
-        setWallet(walletData as Wallet | null);
-      }
+      setCdhBalance(balance);
+    } catch (err) {
+      setBalanceError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load balance"
+      );
+    }
 
-      try {
-        const { balance } = await getWalletBalance();
-        setCdhBalance(balance);
-      } catch (err) {
-        setBalanceError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load balance"
-        );
-      }
+    try {
+      const txns =
+        await getTransactions();
 
-      try {
-        const txns = await getTransactions();
-        setTransactions(txns);
-      } catch {
-        // Transactions are non-critical
-      }
+      setTransactions(
+        txns as Transaction[]
+      );
+    } catch (err) {
+      console.error(
+        "Unable to load transactions:",
+        err
+      );
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    refreshData();
+    if (user?.id) {
+      refreshData();
+    }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -133,15 +142,20 @@ export default function AppShell({
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex">
+
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-64 flex-col border-r border-slate-800/50 bg-slate-900/30 p-4 fixed h-screen">
+
         <div className="flex items-center gap-2 px-2 py-3 mb-6">
           <div className="w-9 h-9 bg-gradient-to-br from-emerald-400 to-teal-600 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <Zap className="w-5 h-5 text-white" fill="white" />
+            <Zap
+              className="w-5 h-5 text-white"
+              fill="white"
+            />
           </div>
 
           <span className="font-bold text-lg">
-            SwiftVTU
+            CheapDataHub
           </span>
         </div>
 
@@ -178,15 +192,20 @@ export default function AppShell({
 
       {/* Main Content */}
       <div className="flex-1 lg:ml-64">
+
         {/* Mobile Header */}
         <header className="lg:hidden sticky top-0 z-40 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/50 px-4 py-3 flex items-center justify-between">
+
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-teal-600 rounded-lg flex items-center justify-center">
-              <Zap className="w-4 h-4 text-white" fill="white" />
+              <Zap
+                className="w-4 h-4 text-white"
+                fill="white"
+              />
             </div>
 
             <span className="font-bold">
-              SwiftVTU
+              CheapDataHub
             </span>
           </div>
 
@@ -199,9 +218,12 @@ export default function AppShell({
         </header>
 
         <main className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto pb-28 lg:pb-8">
+
           {/* Wallet Banner */}
           <div className="bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-800 rounded-2xl p-5 mb-6 flex items-center justify-between">
+
             <div className="flex items-center gap-3">
+
               <div className="w-11 h-11 bg-emerald-500/15 rounded-xl flex items-center justify-center">
                 <WalletIcon className="w-5 h-5 text-emerald-400" />
               </div>
@@ -244,8 +266,7 @@ export default function AppShell({
             </button>
           </div>
 
-          {/* Views */}
-
+          {/* Dashboard */}
           {view === "dashboard" && (
             <DashboardView
               transactions={transactions}
@@ -254,6 +275,7 @@ export default function AppShell({
             />
           )}
 
+          {/* Fund Wallet */}
           {view === "fund-wallet" && (
             <FundWalletView
               onSuccess={refreshData}
@@ -261,14 +283,21 @@ export default function AppShell({
             />
           )}
 
+          {/* Airtime */}
           {view === "airtime" && (
-            <AirtimeView onSuccess={refreshData} />
+            <AirtimeView
+              onSuccess={refreshData}
+            />
           )}
 
+          {/* Data */}
           {view === "data" && (
-            <DataView onSuccess={refreshData} />
+            <DataView
+              onSuccess={refreshData}
+            />
           )}
 
+          {/* Transactions */}
           {view === "transactions" && (
             <TransactionsView
               transactions={transactions}
@@ -280,6 +309,7 @@ export default function AppShell({
 
       {/* Mobile Bottom Navigation */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/50 flex items-center justify-around px-1 py-2 overflow-x-auto">
+
         {navItems.map((item) => (
           <button
             key={item.key}
@@ -343,8 +373,8 @@ function DashboardView({
       </p>
 
       {/* Stats */}
-
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-9 h-9 bg-emerald-500/10 rounded-lg flex items-center justify-center">
@@ -395,8 +425,8 @@ function DashboardView({
       </div>
 
       {/* Quick Actions */}
-
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+
         <button
           onClick={() => onNavigate("fund-wallet")}
           className="bg-gradient-to-br from-blue-500/15 to-blue-500/5 border border-blue-500/20 rounded-2xl p-5 text-left hover:border-blue-500/40 transition group"
@@ -444,7 +474,6 @@ function DashboardView({
       </div>
 
       {/* Recent Transactions */}
-
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">
@@ -498,9 +527,14 @@ function FundWalletView({
   onSuccess: () => Promise<void>;
   user: any;
 }) {
-  const [amount, setAmount] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [processing, setProcessing] = useState(false);
+  const [amount, setAmount] =
+    useState("");
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  const [processing, setProcessing] =
+    useState(false);
 
   const quickAmounts = [
     500,
@@ -510,22 +544,32 @@ function FundWalletView({
     10000,
   ];
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     setError(null);
 
-    const paymentAmount = Number(amount);
+    const paymentAmount =
+      Number(amount);
 
-    if (!paymentAmount || paymentAmount < 100) {
-      setError("Minimum wallet funding amount is ₦100.");
+    if (
+      !paymentAmount ||
+      paymentAmount < 100
+    ) {
+      setError(
+        "Minimum wallet funding amount is ₦100."
+      );
       return;
     }
 
     if (!user) {
-      setError("Please log in again.");
+      setError(
+        "Please log in again."
+      );
       return;
     }
 
-    const publicKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
+    const publicKey =
+      import.meta.env
+        .VITE_FLUTTERWAVE_PUBLIC_KEY;
 
     if (!publicKey) {
       setError(
@@ -543,74 +587,129 @@ function FundWalletView({
 
     setProcessing(true);
 
-    const txRef = `CDH-${Date.now()}-${user.id.slice(0, 8)}`;
+    try {
+      /*
+       * Create/initialize the funding
+       * transaction through your backend.
+       */
+      const initialized =
+        await initializeWalletFunding({
+          amount: paymentAmount,
+          email: user.email,
+          name:
+            user.user_metadata?.full_name ||
+            "",
+        });
 
-    window.FlutterwaveCheckout({
-      public_key: publicKey,
+      const txRef =
+        initialized.reference ||
+        `CDH-${Date.now()}-${user.id.slice(0, 8)}`;
 
-      tx_ref: txRef,
+      window.FlutterwaveCheckout({
+        public_key: publicKey,
 
-      amount: paymentAmount,
+        tx_ref: txRef,
 
-      currency: "NGN",
+        amount: paymentAmount,
 
-      payment_options: "card,account,banktransfer,ussd",
+        currency: "NGN",
 
-      customer: {
-        email: user.email || "customer@cheapdatahub.com",
-        name: user.user_metadata?.full_name || "CheapDataHub Customer",
-      },
+        payment_options:
+          "card,account,banktransfer,ussd",
 
-      customizations: {
-        title: "CheapDataHub",
-        description: "Fund CheapDataHub Wallet",
-      },
+        customer: {
+          email:
+            user.email ||
+            "customer@cheapdatahub.com",
 
-      callback: async (payment: any) => {
-        try {
-          console.log(
-            "Flutterwave payment response:",
-            payment
-          );
+          name:
+            user.user_metadata?.full_name ||
+            "CheapDataHub Customer",
+        },
 
-          /*
-            IMPORTANT:
+        customizations: {
+          title: "CheapDataHub",
+          description:
+            "Fund CheapDataHub Wallet",
+        },
 
-            DO NOT credit the wallet here directly.
+        callback: async (
+          payment: any
+        ) => {
+          try {
+            /*
+             * Verify payment server-side.
+             *
+             * Never credit the wallet
+             * directly from the browser.
+             */
+            const reference =
+              payment?.tx_ref ||
+              txRef;
 
-            The payment must be verified securely
-            using your backend / Supabase Edge Function.
+            const result =
+              await verifyWalletFunding(
+                reference
+              );
 
-            We will connect that next.
-          */
+            if (!result.success) {
+              throw new Error(
+                result.message ||
+                  "Payment verification failed."
+              );
+            }
 
+            await onSuccess();
+
+            setProcessing(false);
+
+            setAmount("");
+
+            alert(
+              result.message ||
+                "Wallet funded successfully."
+            );
+          } catch (err) {
+            console.error(
+              "Wallet verification error:",
+              err
+            );
+
+            setError(
+              err instanceof Error
+                ? err.message
+                : "Payment was received but verification failed. Please contact support."
+            );
+
+            setProcessing(false);
+          }
+        },
+
+        onclose: () => {
           setProcessing(false);
+        },
+      });
+    } catch (err) {
+      console.error(
+        "Wallet funding error:",
+        err
+      );
 
-          alert(
-            "Payment submitted successfully. Your payment will now be verified."
-          );
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to initialize payment."
+      );
 
-          await onSuccess();
-        } catch (err) {
-          console.error(err);
-
-          setError(
-            "Payment was received but verification failed. Please contact support."
-          );
-
-          setProcessing(false);
-        }
-      },
-
-      onclose: () => {
-        setProcessing(false);
-      },
-    });
+      setProcessing(false);
+    }
   };
 
   return (
     <div className="max-w-xl">
+
       <div className="flex items-center gap-3 mb-6">
+
         <div className="w-11 h-11 bg-blue-500/10 rounded-xl flex items-center justify-center">
           <WalletIcon className="w-5 h-5 text-blue-400" />
         </div>
@@ -627,11 +726,13 @@ function FundWalletView({
       </div>
 
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 sm:p-6">
+
         <label className="block text-sm font-medium mb-3">
           Enter Amount
         </label>
 
         <div className="relative mb-5">
+
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-semibold">
             ₦
           </span>
@@ -640,29 +741,42 @@ function FundWalletView({
             type="number"
             min="100"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) =>
+              setAmount(
+                e.target.value
+              )
+            }
             placeholder="0.00"
             className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-4 py-4 text-lg font-semibold outline-none focus:border-emerald-500 transition"
           />
         </div>
 
         <div className="grid grid-cols-3 gap-2 mb-6">
-          {quickAmounts.map((value) => (
-            <button
-              key={value}
-              onClick={() => setAmount(String(value))}
-              className="border border-slate-700 hover:border-emerald-500 hover:bg-emerald-500/10 rounded-lg py-2 text-sm transition"
-            >
-              {formatNaira(value)}
-            </button>
-          ))}
+          {quickAmounts.map(
+            (value) => (
+              <button
+                key={value}
+                onClick={() =>
+                  setAmount(
+                    String(value)
+                  )
+                }
+                className="border border-slate-700 hover:border-emerald-500 hover:bg-emerald-500/10 rounded-lg py-2 text-sm transition"
+              >
+                {formatNaira(value)}
+              </button>
+            )
+          )}
         </div>
 
         {error && (
           <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 text-red-300 rounded-xl p-3 mb-5 text-sm">
+
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
 
-            {error}
+            <span>
+              {error}
+            </span>
           </div>
         )}
 
@@ -687,7 +801,7 @@ function FundWalletView({
         </button>
 
         <p className="text-xs text-slate-500 text-center mt-4">
-          Your wallet will only be credited after payment verification.
+          Your wallet will only be credited after secure payment verification.
         </p>
       </div>
     </div>
@@ -738,11 +852,13 @@ function TransactionRow({
 
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center gap-3">
+
       <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center flex-shrink-0">
         <Icon className="w-5 h-5 text-slate-300" />
       </div>
 
       <div className="flex-1 min-w-0">
+
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm">
             {tx.network}
@@ -766,17 +882,23 @@ function TransactionRow({
       </div>
 
       <div className="text-right flex-shrink-0">
+
         <div className="font-semibold text-sm">
-          {formatNaira(Number(tx.amount))}
+          {formatNaira(
+            Number(tx.amount)
+          )}
         </div>
 
         <div className="text-xs text-slate-500">
           {new Date(
             tx.created_at
-          ).toLocaleDateString("en-NG", {
-            month: "short",
-            day: "numeric",
-          })}
+          ).toLocaleDateString(
+            "en-NG",
+            {
+              month: "short",
+              day: "numeric",
+            }
+          )}
         </div>
       </div>
     </div>
@@ -797,6 +919,7 @@ function TransactionsView({
 }) {
   return (
     <div>
+
       <h1 className="text-2xl font-bold mb-1">
         Transaction History
       </h1>
@@ -811,6 +934,7 @@ function TransactionsView({
         </div>
       ) : transactions.length === 0 ? (
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-10 text-center">
+
           <Receipt className="w-10 h-10 text-slate-600 mx-auto mb-3" />
 
           <p className="text-slate-400 text-sm">
