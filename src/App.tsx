@@ -8,6 +8,7 @@ import AdminDashboard from "@/components/admin/AdminDashboard";
 
 type View =
   | "dashboard"
+  | "fund-wallet"
   | "airtime"
   | "data"
   | "transactions";
@@ -40,18 +41,12 @@ function AppContent() {
   const [view, setView] =
     useState<View>("dashboard");
 
-  /*
-   * Check whether the current URL is /admin.
-   *
-   * Example:
-   * https://your-domain.com/admin
-   */
   const isAdminRoute =
     window.location.pathname === "/admin" ||
     window.location.pathname === "/admin/";
 
   /*
-   * Authentication is still loading.
+   * Wait for Supabase authentication.
    */
   if (loading) {
     return <LoadingScreen />;
@@ -61,14 +56,10 @@ function AppContent() {
    * ==============================
    * ADMIN AREA
    * ==============================
-   *
-   * The AdminDashboard performs
-   * the actual admin_users check.
    */
   if (isAdminRoute) {
     /*
-     * User is not logged in.
-     * Send them to the login screen.
+     * User must log in first.
      */
     if (!user) {
       return (
@@ -81,21 +72,17 @@ function AppContent() {
     }
 
     /*
-     * Logged-in users see the admin
-     * dashboard. AdminDashboard will
-     * reject users who aren't admins.
+     * AdminDashboard should check
+     * the cdh_admins table to verify
+     * that this user is an admin.
      */
     return <AdminDashboard />;
   }
 
   /*
    * ==============================
-   * NORMAL CUSTOMER APPLICATION
+   * CUSTOMER APPLICATION
    * ==============================
-   */
-
-  /*
-   * User is authenticated.
    */
   if (user) {
     return (
@@ -112,10 +99,9 @@ function AppContent() {
 
   /*
    * ==============================
-   * AUTHENTICATION SCREEN
+   * AUTHENTICATION
    * ==============================
    */
-
   if (screen === "auth") {
     return (
       <AuthScreen
@@ -131,7 +117,6 @@ function AppContent() {
    * LANDING PAGE
    * ==============================
    */
-
   return (
     <LandingPage
       onGetStarted={() => {
