@@ -18,6 +18,10 @@ type Screen =
   | "auth"
   | "app";
 
+/* =====================================================
+   LOADING SCREEN
+===================================================== */
+
 function LoadingScreen() {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -32,36 +36,52 @@ function LoadingScreen() {
   );
 }
 
+/* =====================================================
+   APP CONTENT
+===================================================== */
+
 function AppContent() {
   const { user, loading } = useAuth();
 
-  const [screen, setScreen] = useState<Screen>("landing");
+  const [screen, setScreen] =
+    useState<Screen>("landing");
 
-  const [view, setView] = useState<View>("dashboard");
+  const [view, setView] =
+    useState<View>("dashboard");
 
   /*
-   * Check whether the current URL is /admin.
+   * Get the current URL.
+   */
+  const pathname =
+    window.location.pathname;
+
+  /*
+   * Check whether the user is visiting:
+   *
+   * /admin
+   * /admin/
    */
   const isAdminRoute =
-    window.location.pathname === "/admin" ||
-    window.location.pathname === "/admin/";
+    pathname === "/admin" ||
+    pathname === "/admin/";
 
-  /*
-   * Wait for authentication to load.
-   */
+  /* =====================================================
+     AUTH LOADING
+  ===================================================== */
+
   if (loading) {
     return <LoadingScreen />;
   }
 
-  /*
-   * ==============================
-   * ADMIN AREA
-   * ==============================
-   */
+  /* =====================================================
+     ADMIN AREA
+  ===================================================== */
+
   if (isAdminRoute) {
     /*
-     * User must log in first.
+     * Admin page requires login.
      */
+
     if (!user) {
       return (
         <AuthScreen
@@ -73,18 +93,18 @@ function AppContent() {
     }
 
     /*
-     * AdminDashboard should verify
+     * AdminDashboard itself verifies
      * that the logged-in user exists
      * in the cdh_admins table.
      */
+
     return <AdminDashboard />;
   }
 
-  /*
-   * ==============================
-   * CUSTOMER APPLICATION
-   * ==============================
-   */
+  /* =====================================================
+     CUSTOMER APPLICATION
+  ===================================================== */
+
   if (user) {
     return (
       <AppShell
@@ -98,26 +118,24 @@ function AppContent() {
     );
   }
 
-  /*
-   * ==============================
-   * AUTHENTICATION SCREEN
-   * ==============================
-   */
+  /* =====================================================
+     AUTHENTICATION SCREEN
+  ===================================================== */
+
   if (screen === "auth") {
     return (
       <AuthScreen
         onSuccess={() => {
-          setScreen("landing");
+          setScreen("app");
         }}
       />
     );
   }
 
-  /*
-   * ==============================
-   * LANDING PAGE
-   * ==============================
-   */
+  /* =====================================================
+     LANDING PAGE
+  ===================================================== */
+
   return (
     <LandingPage
       onGetStarted={() => {
@@ -126,6 +144,10 @@ function AppContent() {
     />
   );
 }
+
+/* =====================================================
+   MAIN APP
+===================================================== */
 
 export default function App() {
   return (
