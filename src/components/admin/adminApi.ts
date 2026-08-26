@@ -56,6 +56,8 @@ export type PricingRow = {
 
 /* =====================================================
    ADMIN CHECK
+   IMPORTANT:
+   Your actual table is cdh_admins
 ===================================================== */
 
 async function requireAdmin() {
@@ -65,15 +67,27 @@ async function requireAdmin() {
   } = await supabase.auth.getUser();
 
   if (userError) {
-    throw userError;
+    throw new Error(
+      `Unable to verify login: ${userError.message}`
+    );
   }
 
   if (!user) {
     throw new Error("You must be signed in.");
   }
 
+  /*
+   * Your Supabase database contains:
+   *
+   * cdh_admins
+   *   - user_id
+   *   - created_at
+   *
+   * Do NOT use admin_users here.
+   */
+
   const { data, error } = await supabase
-    .from("admin_users")
+    .from("cdh_admins")
     .select("user_id")
     .eq("user_id", user.id)
     .maybeSingle();
@@ -85,7 +99,9 @@ async function requireAdmin() {
   }
 
   if (!data) {
-    throw new Error("Administrator access required.");
+    throw new Error(
+      "Administrator access required."
+    );
   }
 
   return user;
@@ -108,16 +124,55 @@ export async function getAdminStats(): Promise<AdminStats> {
     );
   }
 
-  return (
-    data ?? {
+  if (!data) {
+    return {
       users: 0,
       fundedWallets: 0,
       successfulTransactions: 0,
       transactionVolume: 0,
       estimatedProfit: 0,
       pendingTransactions: 0,
-    }
-  ) as AdminStats;
+    };
+  }
+
+  /*
+   * Make sure numbers coming from PostgreSQL
+   * are converted to JavaScript numbers.
+   */
+
+  return {
+    users: Number(data.users ?? 0),
+
+    fundedWallets: Number(
+      data.fundedWallets ??
+      data.funded_wallets ??
+      0
+    ),
+
+    successfulTransactions: Number(
+      data.successfulTransactions ??
+      data.successful_transactions ??
+      0
+    ),
+
+    transactionVolume: Number(
+      data.transactionVolume ??
+      data.transaction_volume ??
+      0
+    ),
+
+    estimatedProfit: Number(
+      data.estimatedProfit ??
+      data.estimated_profit ??
+      0
+    ),
+
+    pendingTransactions: Number(
+      data.pendingTransactions ??
+      data.pending_transactions ??
+      0
+    ),
+  };
 }
 
 /* =====================================================
@@ -144,7 +199,10 @@ export async function getAdminUsers(
 
   return (data ?? []).map((user: AdminUser) => ({
     ...user,
-    wallet_balance: Number(user.wallet_balance ?? 0),
+
+    wallet_balance: Number(
+      user.wallet_balance ?? 0
+    ),
   }));
 }
 
@@ -157,10 +215,15 @@ export async function getAdminTransactions(
 ): Promise<AdminTransaction[]> {
   await requireAdmin();
 
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 100, 1),
+    500
+  );
+
   const { data, error } = await supabase.rpc(
     "admin_list_transactions",
     {
-      p_limit: limit,
+      p_limit: safeLimit,
     }
   );
 
@@ -170,32 +233,45 @@ export async function getAdminTransactions(
     );
   }
 
-  return (data ?? []).map((transaction: AdminTransaction) => ({
-    ...transaction,
-    amount: Number(
-      transaction.customer_amount ??
-      transaction.amount ??
-      0
-    ),
-    customer_amount: Number(
-      transaction.customer_amount ??
-      transaction.amount ??
-      0
-    ),
-    provider_cost: Number(
-      transaction.provider_cost ?? 0
-    ),
-    profit: Number(
-      transaction.profit ?? 0
-    ),
-  }));
+  return (data ?? []).map(
+    (transaction: AdminTransaction) => {
+      const customerAmount = Number(
+        transaction.customer_amount ??
+        transaction.amount ??
+        0
+      );
+
+      const providerCost = Number(
+        transaction.provider_cost ?? 0
+      );
+
+      const profit = Number(
+        transaction.profit ??
+        customerAmount - providerCost
+      );
+
+      return {
+        ...transaction,
+
+        amount: customerAmount,
+
+        customer_amount: customerAmount,
+
+        provider_cost: providerCost,
+
+        profit,
+      };
+    }
+  );
 }
 
 /* =====================================================
    PRICING
 ===================================================== */
 
-export async function getPricing(): Promise<PricingRow[]> {
+export async function getPricing(): Promise<
+  PricingRow[]
+> {
   await requireAdmin();
 
   const { data, error } = await supabase
@@ -227,10 +303,25 @@ export async function getPricing(): Promise<PricingRow[]> {
     );
 
     return {
-      ...item,
+      id: item.id,
 
       product_id:
         item.product_id ?? null,
+
+      network:
+        item.network ?? "",
+
+      product_type:
+        item.product_type,
+
+      provider_id:
+        item.provider_id ?? null,
+
+      plan_code:
+        item.plan_code ?? null,
+
+      plan_name:
+        item.plan_name ?? "",
 
       provider_cost:
         providerCost,
@@ -238,13 +329,20 @@ export async function getPricing(): Promise<PricingRow[]> {
       customer_price:
         customerPrice,
 
-      profit: Number(
-        item.profit ??
+      profit:
+        Number(
+          item.profit ??
           customerPrice - providerCost
-      ),
+        ),
 
       is_active:
         Boolean(item.is_active),
+
+      created_at:
+        item.created_at,
+
+      updated_at:
+        item.updated_at,
     };
   }) as PricingRow[];
 }
@@ -261,12 +359,16 @@ export async function updatePricing(
   await requireAdmin();
 
   if (!id) {
-    throw new Error("Pricing ID is required.");
+    throw new Error(
+      "Pricing ID is required."
+    );
   }
 
+  const price = Number(customerPrice);
+
   if (
-    !Number.isFinite(customerPrice) ||
-    customerPrice < 0
+    !Number.isFinite(price) ||
+    price < 0
   ) {
     throw new Error(
       "Customer price must be a valid non-negative amount."
@@ -287,20 +389,19 @@ export async function updatePricing(
   }
 
   const providerCost = Number(
-    existing.provider_cost ?? 0
+    existing?.provider_cost ?? 0
   );
 
-  const profit =
-    Number(customerPrice) - providerCost;
+  const profit = price - providerCost;
 
   const { error } = await supabase
     .from("cdh_product_pricing")
     .update({
-      customer_price: Number(customerPrice),
+      customer_price: price,
 
       profit,
 
-      is_active: isActive,
+      is_active: Boolean(isActive),
 
       updated_at:
         new Date().toISOString(),
@@ -312,6 +413,8 @@ export async function updatePricing(
       `Unable to update pricing: ${error.message}`
     );
   }
+
+  return true;
 }
 
 /* =====================================================
@@ -326,34 +429,44 @@ export async function adjustWallet(
   await requireAdmin();
 
   if (!userId) {
-    throw new Error("User ID is required.");
-  }
-
-  if (
-    !Number.isFinite(amount) ||
-    amount === 0
-  ) {
     throw new Error(
-      "Enter a non-zero amount."
+      "User ID is required."
     );
   }
 
-  if (!reason.trim()) {
+  const walletAmount = Number(amount);
+
+  if (
+    !Number.isFinite(walletAmount) ||
+    walletAmount === 0
+  ) {
+    throw new Error(
+      "Enter a valid non-zero amount."
+    );
+  }
+
+  const walletReason =
+    reason.trim();
+
+  if (!walletReason) {
     throw new Error(
       "A reason is required."
     );
   }
 
-  const { data, error } = await supabase.rpc(
-    "admin_adjust_wallet",
-    {
-      p_user_id: userId,
+  const { data, error } =
+    await supabase.rpc(
+      "admin_adjust_wallet",
+      {
+        p_user_id: userId,
 
-      p_amount: Number(amount),
+        p_amount:
+          walletAmount,
 
-      p_reason: reason.trim(),
-    }
-  );
+        p_reason:
+          walletReason,
+      }
+    );
 
   if (error) {
     throw new Error(
@@ -375,20 +488,29 @@ export async function setAdmin(
   await requireAdmin();
 
   if (!userId) {
-    throw new Error("User ID is required.");
+    throw new Error(
+      "User ID is required."
+    );
   }
 
+  /*
+   * IMPORTANT:
+   * Use cdh_admins, not admin_users.
+   */
+
   if (enabled) {
-    const { error } = await supabase
-      .from("admin_users")
-      .upsert(
-        {
-          user_id: userId,
-        },
-        {
-          onConflict: "user_id",
-        }
-      );
+    const { error } =
+      await supabase
+        .from("cdh_admins")
+        .upsert(
+          {
+            user_id: userId,
+          },
+          {
+            onConflict:
+              "user_id",
+          }
+        );
 
     if (error) {
       throw new Error(
@@ -396,17 +518,23 @@ export async function setAdmin(
       );
     }
 
-    return;
+    return true;
   }
 
-  const { error } = await supabase
-    .from("admin_users")
-    .delete()
-    .eq("user_id", userId);
+  const { error } =
+    await supabase
+      .from("cdh_admins")
+      .delete()
+      .eq(
+        "user_id",
+        userId
+      );
 
   if (error) {
     throw new Error(
       `Unable to remove admin access: ${error.message}`
     );
   }
+
+  return true;
 }
