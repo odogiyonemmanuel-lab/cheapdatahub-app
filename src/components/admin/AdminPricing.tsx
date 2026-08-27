@@ -1,3 +1,4 @@
+```tsx
 import { useEffect, useState } from "react";
 import {
   Loader2,
@@ -18,9 +19,7 @@ const money = (amount: number) =>
 export default function AdminPricing() {
   const [rows, setRows] = useState<PricingRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(
-    null
-  );
+  const [saving, setSaving] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -49,8 +48,8 @@ export default function AdminPricing() {
     try {
       await updatePricing(
         row.id,
-        Number(row.selling_price),
-        row.active
+        Number(row.customer_price),
+        row.is_active
       );
 
       alert("Price updated.");
@@ -73,7 +72,6 @@ export default function AdminPricing() {
 
   return (
     <section>
-
       <div className="mb-4">
         <h2 className="text-lg font-semibold">
           Pricing & Markup
@@ -86,30 +84,30 @@ export default function AdminPricing() {
       </div>
 
       <div className="space-y-2">
-
         {rows.map((row) => {
-
           const profit =
-            Number(row.selling_price) -
-            Number(row.provider_price);
+            Number(row.customer_price) -
+            Number(row.provider_cost);
 
           return (
             <div
               key={row.id}
               className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 grid md:grid-cols-[1fr_auto_auto_auto] gap-4 items-center"
             >
-
               <div>
-
                 <div className="font-medium">
                   {row.network} · {row.plan_name}
                 </div>
 
                 <div className="text-xs text-slate-500">
-                  {row.product_type} · Provider:{" "}
-                  {money(row.provider_price)}
+                  {row.data_size
+                    ? `${row.data_size} · `
+                    : ""}
+                  {row.validity
+                    ? `${row.validity} · `
+                    : ""}
+                  Provider: {money(row.provider_cost)}
                 </div>
-
               </div>
 
               <div className="text-sm text-emerald-400">
@@ -120,7 +118,7 @@ export default function AdminPricing() {
                 type="number"
                 min="0"
                 step="0.01"
-                value={row.selling_price}
+                value={row.customer_price}
                 onChange={(event) => {
                   const value =
                     Number(event.target.value);
@@ -130,7 +128,12 @@ export default function AdminPricing() {
                       item.id === row.id
                         ? {
                             ...item,
-                            selling_price: value,
+                            customer_price: value,
+                            profit:
+                              value -
+                              Number(
+                                item.provider_cost
+                              ),
                           }
                         : item
                     )
@@ -144,7 +147,6 @@ export default function AdminPricing() {
                 onClick={() => save(row)}
                 className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-emerald-500 text-slate-950 font-semibold text-xs disabled:opacity-50"
               >
-
                 {saving === row.id ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
@@ -152,9 +154,7 @@ export default function AdminPricing() {
                 )}
 
                 Save
-
               </button>
-
             </div>
           );
         })}
@@ -164,9 +164,8 @@ export default function AdminPricing() {
             No pricing rows yet.
           </p>
         )}
-
       </div>
-
     </section>
   );
 }
+```
