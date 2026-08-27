@@ -5,6 +5,7 @@ import {
   EyeOff,
   Loader2,
 } from "lucide-react";
+
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
 
@@ -19,15 +20,9 @@ export default function AdminLogin({
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
-  const [showPassword, setShowPassword] =
-    useState(false);
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const [error, setError] =
-    useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (
     event: FormEvent<HTMLFormElement>
@@ -36,16 +31,31 @@ export default function AdminLogin({
 
     if (loading) return;
 
-    setError(null);
+    setError("");
+
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail) {
+      setError("Please enter your email address.");
+      return;
+    }
+
+    if (!password) {
+      setError("Please enter your password.");
+      return;
+    }
+
     setLoading(true);
 
     try {
       /*
-       * 1. Authenticate with Supabase
+       * ================================================
+       * 1. SUPABASE LOGIN
+       * ================================================
        */
 
       const result = await signIn(
-        email,
+        cleanEmail,
         password
       );
 
@@ -55,43 +65,49 @@ export default function AdminLogin({
       }
 
       /*
-       * 2. Get the authenticated user
+       * ================================================
+       * 2. GET CURRENT USER
+       * ================================================
        */
 
       const {
-        data: {
-          user,
-        },
+        data,
         error: userError,
       } = await supabase.auth.getUser();
 
       if (userError) {
         console.error(
-          "Unable to retrieve authenticated user:",
+          "getUser error:",
           userError
         );
 
-        await supabase.auth.signOut();
-
         setError(
-          "Unable to verify your account. Please try again."
+          "Login succeeded, but we could not verify your session."
         );
 
         return;
       }
+
+      const user = data.user;
 
       if (!user) {
-        await supabase.auth.signOut();
-
         setError(
-          "Login succeeded, but your account could not be verified."
+          "No authenticated user was found."
         );
 
         return;
       }
 
+      console.log(
+        "Authenticated user:",
+        user.id,
+        user.email
+      );
+
       /*
-       * 3. Check cdh_admins
+       * ================================================
+       * 3. VERIFY ADMIN
+       * ================================================
        */
 
       const {
@@ -105,11 +121,9 @@ export default function AdminLogin({
 
       if (adminError) {
         console.error(
-          "Admin verification error:",
+          "cdh_admins query error:",
           adminError
         );
-
-        await supabase.auth.signOut();
 
         setError(
           `Unable to verify administrator access: ${adminError.message}`
@@ -118,40 +132,41 @@ export default function AdminLogin({
         return;
       }
 
-      /*
-       * 4. Authenticated but not an administrator
-       */
-
       if (!admin) {
-        await supabase.auth.signOut();
-
         setError(
-          "Administrator access required. This account is not authorized to access the admin dashboard."
+          "This account is not registered as an administrator."
         );
 
         return;
       }
 
       /*
-       * 5. Administrator verified
+       * ================================================
+       * 4. ADMIN VERIFIED
+       * ================================================
        */
 
       console.log(
-        "Admin login successful:",
+        "ADMIN VERIFIED:",
         user.email
       );
 
-      onSuccess();
-    } catch (error) {
+      /*
+       * Do not use React state to navigate.
+       * Perform a real browser navigation.
+       */
+
+      window.location.href = "/admin";
+    } catch (err) {
       console.error(
-        "Admin login failed:",
-        error
+        "Admin login exception:",
+        err
       );
 
       setError(
-        error instanceof Error
-          ? error.message
-          : "Unable to sign in. Please try again."
+        err instanceof Error
+          ? err.message
+          : "Unable to sign in."
       );
     } finally {
       setLoading(false);
@@ -162,9 +177,7 @@ export default function AdminLogin({
     <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
 
-        {/* =================================================
-            HEADER
-        ================================================= */}
+        {/* HEADER */}
 
         <div className="mb-8 text-center">
 
@@ -185,39 +198,27 @@ export default function AdminLogin({
 
         </div>
 
-        {/* =================================================
-            LOGIN CARD
-        ================================================= */}
+        {/* CARD */}
 
         <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-2xl sm:p-8">
 
-          <div className="mb-6">
+          <h2 className="text-xl font-semibold text-white">
+            Admin Login
+          </h2>
 
-            <h2 className="text-xl font-semibold text-white">
-              Admin Login
-            </h2>
+          <p className="mt-1 mb-6 text-sm text-slate-400">
+            Sign in with your administrator account.
+          </p>
 
-            <p className="mt-1 text-sm text-slate-400">
-              Sign in with your administrator account.
-            </p>
-
-          </div>
-
-          {/* =================================================
-              ERROR
-          ================================================= */}
+          {/* ERROR */}
 
           {error && (
-            <div className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3">
+            <div className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 p-4">
               <p className="text-sm leading-5 text-red-300">
                 {error}
               </p>
             </div>
           )}
-
-          {/* =================================================
-              FORM
-          ================================================= */}
 
           <form
             onSubmit={handleSubmit}
@@ -248,7 +249,7 @@ export default function AdminLogin({
                 spellCheck={false}
                 disabled={loading}
                 required
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-60"
               />
 
             </div>
@@ -281,7 +282,7 @@ export default function AdminLogin({
                   autoComplete="current-password"
                   disabled={loading}
                   required
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-12 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-12 text-sm text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-60"
                 />
 
                 <button
@@ -292,12 +293,7 @@ export default function AdminLogin({
                     )
                   }
                   disabled={loading}
-                  aria-label={
-                    showPassword
-                      ? "Hide password"
-                      : "Show password"
-                  }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 transition hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 hover:text-slate-300"
                 >
                   {showPassword ? (
                     <EyeOff className="h-5 w-5" />
@@ -310,12 +306,12 @@ export default function AdminLogin({
 
             </div>
 
-            {/* LOGIN BUTTON */}
+            {/* BUTTON */}
 
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
 
               {loading ? (
@@ -333,18 +329,10 @@ export default function AdminLogin({
             </button>
 
           </form>
-
         </div>
 
-        {/* =================================================
-            FOOTER
-        ================================================= */}
-
-        <p className="mt-6 text-center text-xs leading-5 text-slate-600">
+        <p className="mt-6 text-center text-xs text-slate-600">
           Authorized administrator access only.
-          <br />
-          Your account must be registered in the
-          CheapDataHub administrator system.
         </p>
 
       </div>
