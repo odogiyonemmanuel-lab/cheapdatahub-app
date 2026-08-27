@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 
 import LandingPage from "@/components/LandingPage";
 import AuthScreen from "@/components/AuthScreen";
+import AdminLogin from "@/components/admin/AdminLogin";
 import AppShell from "@/components/AppShell";
 import AdminDashboard from "@/components/admin/AdminDashboard";
 
@@ -52,18 +53,21 @@ function AppContent() {
   /*
    * Get the current URL.
    */
+
   const pathname =
     window.location.pathname;
 
   /*
-   * Check whether the user is visiting:
-   *
-   * /admin
-   * /admin/
+   * Admin routes.
    */
+
   const isAdminRoute =
     pathname === "/admin" ||
     pathname === "/admin/";
+
+  const isAdminLoginRoute =
+    pathname === "/admin/login" ||
+    pathname === "/admin/login/";
 
   /* =====================================================
      AUTH LOADING
@@ -74,28 +78,53 @@ function AppContent() {
   }
 
   /* =====================================================
+     ADMIN LOGIN
+  ===================================================== */
+
+  if (isAdminLoginRoute) {
+    /*
+     * If an authenticated user visits
+     * /admin/login, AdminLogin will still
+     * verify whether the account is an admin.
+     *
+     * This prevents normal customer accounts
+     * from receiving admin access.
+     */
+
+    return (
+      <AdminLogin
+        onSuccess={() => {
+          window.location.href = "/admin";
+        }}
+      />
+    );
+  }
+
+  /* =====================================================
      ADMIN AREA
   ===================================================== */
 
   if (isAdminRoute) {
     /*
-     * Admin page requires login.
+     * No authenticated user?
+     *
+     * Send them to the dedicated
+     * administrator login page.
      */
 
     if (!user) {
-      return (
-        <AuthScreen
-          onSuccess={() => {
-            window.location.href = "/admin";
-          }}
-        />
+      window.location.replace(
+        "/admin/login"
       );
+
+      return <LoadingScreen />;
     }
 
     /*
-     * AdminDashboard itself verifies
-     * that the logged-in user exists
-     * in the cdh_admins table.
+     * The AdminDashboard continues to have
+     * its own administrator verification.
+     *
+     * This provides a second layer of protection.
      */
 
     return <AdminDashboard />;
@@ -119,7 +148,7 @@ function AppContent() {
   }
 
   /* =====================================================
-     AUTHENTICATION SCREEN
+     CUSTOMER AUTHENTICATION
   ===================================================== */
 
   if (screen === "auth") {
