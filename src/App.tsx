@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { AuthProvider, useAuth } from "@/lib/auth";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  AuthProvider,
+  useAuth,
+} from "@/lib/auth";
 
 import LandingPage from "@/components/LandingPage";
 import AuthScreen from "@/components/AuthScreen";
@@ -27,11 +34,13 @@ function LoadingScreen() {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
+
         <div className="w-10 h-10 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
 
         <p className="text-sm text-slate-400">
           Loading CheapDataHub...
         </p>
+
       </div>
     </div>
   );
@@ -42,7 +51,10 @@ function LoadingScreen() {
 ===================================================== */
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const {
+    user,
+    loading,
+  } = useAuth();
 
   const [screen, setScreen] =
     useState<Screen>("landing");
@@ -50,16 +62,12 @@ function AppContent() {
   const [view, setView] =
     useState<View>("dashboard");
 
-  /*
-   * Get the current URL.
-   */
+  /* =====================================================
+     CURRENT PATH
+  ===================================================== */
 
   const pathname =
     window.location.pathname;
-
-  /*
-   * Admin routes.
-   */
 
   const isAdminRoute =
     pathname === "/admin" ||
@@ -68,6 +76,26 @@ function AppContent() {
   const isAdminLoginRoute =
     pathname === "/admin/login" ||
     pathname === "/admin/login/";
+
+  /* =====================================================
+     REDIRECT UNAUTHENTICATED ADMIN USERS
+  ===================================================== */
+
+  useEffect(() => {
+    if (
+      !loading &&
+      isAdminRoute &&
+      !user
+    ) {
+      window.location.assign(
+        "/admin/login"
+      );
+    }
+  }, [
+    loading,
+    isAdminRoute,
+    user,
+  ]);
 
   /* =====================================================
      AUTH LOADING
@@ -82,50 +110,31 @@ function AppContent() {
   ===================================================== */
 
   if (isAdminLoginRoute) {
-    /*
-     * If an authenticated user visits
-     * /admin/login, AdminLogin will still
-     * verify whether the account is an admin.
-     *
-     * This prevents normal customer accounts
-     * from receiving admin access.
-     */
-
     return (
       <AdminLogin
         onSuccess={() => {
-          window.location.href = "/admin";
+          window.location.assign(
+            "/admin"
+          );
         }}
       />
     );
   }
 
   /* =====================================================
-     ADMIN AREA
+     ADMIN DASHBOARD
   ===================================================== */
 
   if (isAdminRoute) {
     /*
-     * No authenticated user?
-     *
-     * Send them to the dedicated
-     * administrator login page.
+     * If there is no logged-in user,
+     * the useEffect above redirects to
+     * /admin/login.
      */
 
     if (!user) {
-      window.location.replace(
-        "/admin/login"
-      );
-
       return <LoadingScreen />;
     }
-
-    /*
-     * The AdminDashboard continues to have
-     * its own administrator verification.
-     *
-     * This provides a second layer of protection.
-     */
 
     return <AdminDashboard />;
   }
