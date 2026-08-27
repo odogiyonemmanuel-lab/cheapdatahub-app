@@ -1,4 +1,3 @@
-```tsx
 import { useEffect, useState } from "react";
 import {
   Loader2,
@@ -53,6 +52,8 @@ export default function AdminPricing() {
       );
 
       alert("Price updated.");
+
+      await load();
     } catch (error) {
       alert(
         error instanceof Error
@@ -66,7 +67,9 @@ export default function AdminPricing() {
 
   if (loading) {
     return (
-      <Loader2 className="animate-spin text-emerald-400" />
+      <div className="py-8 flex justify-center">
+        <Loader2 className="animate-spin text-emerald-400" />
+      </div>
     );
   }
 
@@ -168,4 +171,3 @@ export default function AdminPricing() {
     </section>
   );
 }
-```
