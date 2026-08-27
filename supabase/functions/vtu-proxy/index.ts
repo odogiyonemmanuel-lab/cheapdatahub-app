@@ -1,14 +1,19 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+
+import {
+  createClient,
+} from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods":
+    "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const FLUTTERWAVE_BASE_URL = "https://api.flutterwave.com/v3";
+const FLUTTERWAVE_BASE_URL =
+  "https://api.flutterwave.com/v3";
 
 function jsonResponse(
   data: unknown,
@@ -20,62 +25,54 @@ function jsonResponse(
       status,
       headers: {
         ...corsHeaders,
-        "Content-Type": "application/json",
+        "Content-Type":
+          "application/json",
       },
     },
   );
 }
 
 /**
- * Extract the route after the vtu-proxy function name.
+ * Extract the route after the vtu-proxy function.
  *
  * Examples:
  *
  * /functions/v1/vtu-proxy/wallet/fund
  * -> wallet/fund
  *
- * /vtu-proxy/wallet/fund
- * -> wallet/fund
+ * /functions/v1/vtu-proxy/wallet/verify
+ * -> wallet/verify
  */
-function getPath(req: Request): string {
+function getPath(req: Request) {
   const url = new URL(req.url);
 
-  let path = url.pathname;
-
-  path = path.replace(
-    /^\/functions\/v1\/vtu-proxy\/?/,
-    "",
-  );
-
-  path = path.replace(
-    /^\/vtu-proxy\/?/,
-    "",
-  );
-
-  return path.replace(/^\/+|\/+$/g, "");
+  return url.pathname
+    .replace(
+      /^\/functions\/v1\/vtu-proxy\/?/,
+      "",
+    )
+    .replace(
+      /^\/vtu-proxy\/?/,
+      "",
+    )
+    .replace(/^\/+|\/+$/g, "");
 }
 
 function generateReference(
   userId: string,
-): string {
-  const randomPart = crypto
-    .randomUUID()
-    .replaceAll("-", "")
-    .slice(0, 8);
-
-  return `CDH-${userId.slice(
-    0,
-    8,
-  )}-${Date.now()}-${randomPart}`.toUpperCase();
+) {
+  return (
+    `CDH-${userId.slice(
+      0,
+      8,
+    )}-${Date.now()}-${crypto
+      .randomUUID()
+      .replaceAll("-", "")
+      .slice(0, 8)}`
+  ).toUpperCase();
 }
 
 Deno.serve(async (req: Request) => {
-  /**
-   * ==========================================
-   * CORS PREFLIGHT
-   * ==========================================
-   */
-
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -84,12 +81,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    /**
-     * ==========================================
-     * ENVIRONMENT VARIABLES
-     * ==========================================
-     */
-
     const supabaseUrl =
       Deno.env.get("SUPABASE_URL");
 
@@ -103,20 +94,14 @@ Deno.serve(async (req: Request) => {
         "FLW_SECRET_KEY",
       );
 
-    if (!supabaseUrl) {
-      return jsonResponse(
-        {
-          error: "SUPABASE_URL is missing",
-        },
-        500,
-      );
-    }
-
-    if (!serviceRoleKey) {
+    if (
+      !supabaseUrl ||
+      !serviceRoleKey
+    ) {
       return jsonResponse(
         {
           error:
-            "SUPABASE_SERVICE_ROLE_KEY is missing",
+            "Supabase server configuration is missing.",
         },
         500,
       );
@@ -126,16 +111,98 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(
         {
           error:
-            "FLW_SECRET_KEY is missing",
+            "Flutterwave is not configured.",
         },
         500,
       );
     }
 
-    /**
-     * ==========================================
-     * SUPABASE ADMIN CLIENT
-     * ==========================================
+    const supabase = createClient(
+      supabaseUrl,
+      serviceRoleKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      },
+    );
+
+    const authHeader =
+      req.headers.get("Authorization");
+
+    if (!authHeader) {
+      return jsonResponse(
+        {
+          error:
+            "Missing authorization header.",
+        },
+        401,
+      );
+    }
+
+    const token = authHeader.replace(
+      /^Bearer\s+/i,
+      "",
+    );
+
+    const {
+      data: { user },
+      error: authError,
+    } =
+      await supabase.auth.getUser(
+        token,
+      );
+
+    if (authError || !user) {
+      console.error(
+        "Authentication error:",
+        authError,
+      );
+
+      return jsonResponse(
+        {
+          error: "Unauthorized.",
+        },
+        401,
+      );
+    }
+
+    const path = getPath(req);
+
+    console.log(
+      "vtu-proxy path:",
+      path,
+    );
+
+    console.log(
+      "Authenticated user:",
+      user.id,
+    );
+
+    /*
+     * ============================================
+     * WALLET FUND
+     * ============================================
      */
 
-   
+    if (path === "wallet/fund") {
+      if (req.method !== "POST") {
+        return jsonResponse(
+          {
+            error:
+              "Method not allowed.",
+          },
+          405,
+        );
+      }
+
+      const body =
+        await req.json()
+          .catch(() => null);
+
+      if (!body) {
+        return jsonResponse(
+          {
+            error:
+              "
