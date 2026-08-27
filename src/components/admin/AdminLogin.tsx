@@ -1,5 +1,10 @@
 import { FormEvent, useState } from "react";
-import { ShieldCheck, Eye, EyeOff, Loader2 } from "lucide-react";
+import {
+  ShieldCheck,
+  Eye,
+  EyeOff,
+  Loader2,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
 
@@ -35,9 +40,9 @@ export default function AdminLogin({
     setLoading(true);
 
     try {
-      /* =================================================
-         SIGN IN
-      ================================================= */
+      /*
+       * 1. Authenticate with Supabase
+       */
 
       const result = await signIn(
         email,
@@ -49,9 +54,9 @@ export default function AdminLogin({
         return;
       }
 
-      /* =================================================
-         GET AUTHENTICATED USER
-      ================================================= */
+      /*
+       * 2. Get the authenticated user
+       */
 
       const {
         data: {
@@ -69,7 +74,7 @@ export default function AdminLogin({
         await supabase.auth.signOut();
 
         setError(
-          "Unable to verify your administrator account. Please try again."
+          "Unable to verify your account. Please try again."
         );
 
         return;
@@ -79,15 +84,15 @@ export default function AdminLogin({
         await supabase.auth.signOut();
 
         setError(
-          "Login was not completed. Please try again."
+          "Login succeeded, but your account could not be verified."
         );
 
         return;
       }
 
-      /* =================================================
-         VERIFY ADMIN ACCESS
-      ================================================= */
+      /*
+       * 3. Check cdh_admins
+       */
 
       const {
         data: admin,
@@ -100,18 +105,22 @@ export default function AdminLogin({
 
       if (adminError) {
         console.error(
-          "Administrator verification error:",
+          "Admin verification error:",
           adminError
         );
 
         await supabase.auth.signOut();
 
         setError(
-          "Unable to verify administrator access. Please try again."
+          `Unable to verify administrator access: ${adminError.message}`
         );
 
         return;
       }
+
+      /*
+       * 4. Authenticated but not an administrator
+       */
 
       if (!admin) {
         await supabase.auth.signOut();
@@ -123,20 +132,25 @@ export default function AdminLogin({
         return;
       }
 
-      /* =================================================
-         ADMIN VERIFIED
-      ================================================= */
+      /*
+       * 5. Administrator verified
+       */
+
+      console.log(
+        "Admin login successful:",
+        user.email
+      );
 
       onSuccess();
-    } catch (err) {
+    } catch (error) {
       console.error(
         "Admin login failed:",
-        err
+        error
       );
 
       setError(
-        err instanceof Error
-          ? err.message
+        error instanceof Error
+          ? error.message
           : "Unable to sign in. Please try again."
       );
     } finally {
@@ -147,12 +161,14 @@ export default function AdminLogin({
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
+
         {/* =================================================
-            BRANDING
+            HEADER
         ================================================= */}
 
-        <div className="text-center mb-8">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+        <div className="mb-8 text-center">
+
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
             <ShieldCheck
               className="h-8 w-8 text-emerald-400"
               strokeWidth={1.8}
@@ -166,14 +182,17 @@ export default function AdminLogin({
           <p className="mt-2 text-sm text-slate-400">
             Administrator Portal
           </p>
+
         </div>
 
         {/* =================================================
             LOGIN CARD
         ================================================= */}
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl sm:p-8">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-2xl sm:p-8">
+
           <div className="mb-6">
+
             <h2 className="text-xl font-semibold text-white">
               Admin Login
             </h2>
@@ -181,6 +200,7 @@ export default function AdminLogin({
             <p className="mt-1 text-sm text-slate-400">
               Sign in with your administrator account.
             </p>
+
           </div>
 
           {/* =================================================
@@ -203,9 +223,11 @@ export default function AdminLogin({
             onSubmit={handleSubmit}
             className="space-y-5"
           >
+
             {/* EMAIL */}
 
             <div>
+
               <label
                 htmlFor="admin-email"
                 className="mb-2 block text-sm font-medium text-slate-300"
@@ -223,15 +245,18 @@ export default function AdminLogin({
                 placeholder="admin@example.com"
                 autoComplete="username"
                 autoCapitalize="none"
+                spellCheck={false}
                 disabled={loading}
                 required
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
               />
+
             </div>
 
             {/* PASSWORD */}
 
             <div>
+
               <label
                 htmlFor="admin-password"
                 className="mb-2 block text-sm font-medium text-slate-300"
@@ -240,6 +265,7 @@ export default function AdminLogin({
               </label>
 
               <div className="relative">
+
                 <input
                   id="admin-password"
                   type={
@@ -279,16 +305,19 @@ export default function AdminLogin({
                     <Eye className="h-5 w-5" />
                   )}
                 </button>
+
               </div>
+
             </div>
 
-            {/* SUBMIT */}
+            {/* LOGIN BUTTON */}
 
             <button
               type="submit"
               disabled={loading}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
+
               {loading ? (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -300,12 +329,15 @@ export default function AdminLogin({
                   Sign in to Admin
                 </>
               )}
+
             </button>
+
           </form>
+
         </div>
 
         {/* =================================================
-            SECURITY NOTICE
+            FOOTER
         ================================================= */}
 
         <p className="mt-6 text-center text-xs leading-5 text-slate-600">
@@ -314,6 +346,7 @@ export default function AdminLogin({
           Your account must be registered in the
           CheapDataHub administrator system.
         </p>
+
       </div>
     </div>
   );
