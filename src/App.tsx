@@ -1,17 +1,11 @@
-import {
-  useEffect,
-  useState,
-} from "react";
-
-import {
-  AuthProvider,
-  useAuth,
-} from "@/lib/auth";
+import { useState } from "react";
+import { AuthProvider, useAuth } from "@/lib/auth";
 
 import LandingPage from "@/components/LandingPage";
 import AuthScreen from "@/components/AuthScreen";
-import AdminLogin from "@/components/admin/AdminLogin";
 import AppShell from "@/components/AppShell";
+
+import AdminLogin from "@/components/admin/AdminLogin";
 import AdminDashboard from "@/components/admin/AdminDashboard";
 
 type View =
@@ -26,16 +20,12 @@ type Screen =
   | "auth"
   | "app";
 
-/* =====================================================
-   LOADING SCREEN
-===================================================== */
-
 function LoadingScreen() {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
 
-        <div className="w-10 h-10 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
 
         <p className="text-sm text-slate-400">
           Loading CheapDataHub...
@@ -45,10 +35,6 @@ function LoadingScreen() {
     </div>
   );
 }
-
-/* =====================================================
-   APP CONTENT
-===================================================== */
 
 function AppContent() {
   const {
@@ -62,86 +48,99 @@ function AppContent() {
   const [view, setView] =
     useState<View>("dashboard");
 
-  /* =====================================================
-     CURRENT PATH
-  ===================================================== */
+  /*
+   * Remove trailing slash so:
+   *
+   * /admin
+   * /admin/
+   *
+   * are treated the same.
+   */
 
   const pathname =
-    window.location.pathname;
+    window.location.pathname.replace(
+      /\/+$/,
+      ""
+    ) || "/";
+
+  /*
+   * ================================================
+   * ADMIN ROUTES
+   * ================================================
+   */
+
+  const isAdminLogin =
+    pathname === "/admin/login";
+
+  const isAdminDashboard =
+    pathname === "/admin";
 
   const isAdminRoute =
     pathname === "/admin" ||
-    pathname === "/admin/";
+    pathname.startsWith("/admin/");
 
-  const isAdminLoginRoute =
-    pathname === "/admin/login" ||
-    pathname === "/admin/login/";
-
-  /* =====================================================
-     REDIRECT UNAUTHENTICATED ADMIN USERS
-  ===================================================== */
-
-  useEffect(() => {
-    if (
-      !loading &&
-      isAdminRoute &&
-      !user
-    ) {
-      window.location.assign(
-        "/admin/login"
-      );
-    }
-  }, [
-    loading,
-    isAdminRoute,
-    user,
-  ]);
-
-  /* =====================================================
-     AUTH LOADING
-  ===================================================== */
+  /*
+   * ================================================
+   * LOADING
+   * ================================================
+   */
 
   if (loading) {
     return <LoadingScreen />;
   }
 
-  /* =====================================================
-     ADMIN LOGIN
-  ===================================================== */
+  /*
+   * ================================================
+   * ADMIN LOGIN
+   * ================================================
+   */
 
-  if (isAdminLoginRoute) {
-    return (
-      <AdminLogin
-        onSuccess={() => {
-          window.location.assign(
-            "/admin"
-          );
-        }}
-      />
-    );
+  if (isAdminLogin) {
+    return <AdminLogin onSuccess={() => {}} />;
   }
 
-  /* =====================================================
-     ADMIN DASHBOARD
-  ===================================================== */
+  /*
+   * ================================================
+   * ADMIN DASHBOARD
+   * ================================================
+   */
 
-  if (isAdminRoute) {
+  if (isAdminDashboard) {
+
     /*
-     * If there is no logged-in user,
-     * the useEffect above redirects to
-     * /admin/login.
+     * There is no authenticated user.
+     *
+     * Send them to the dedicated admin login.
      */
 
     if (!user) {
+      window.location.href =
+        "/admin/login";
+
       return <LoadingScreen />;
     }
 
     return <AdminDashboard />;
   }
 
-  /* =====================================================
-     CUSTOMER APPLICATION
-  ===================================================== */
+  /*
+   * ================================================
+   * ANY OTHER /admin/* ROUTE
+   * ================================================
+   */
+
+  if (isAdminRoute) {
+    window.location.href =
+      "/admin/login";
+
+    return <LoadingScreen />;
+  }
+
+  /*
+   * ================================================
+   * CUSTOMER APPLICATION
+   * ================================================
+   */
 
   if (user) {
     return (
@@ -156,9 +155,11 @@ function AppContent() {
     );
   }
 
-  /* =====================================================
-     CUSTOMER AUTHENTICATION
-  ===================================================== */
+  /*
+   * ================================================
+   * CUSTOMER AUTH
+   * ================================================
+   */
 
   if (screen === "auth") {
     return (
@@ -170,9 +171,11 @@ function AppContent() {
     );
   }
 
-  /* =====================================================
-     LANDING PAGE
-  ===================================================== */
+  /*
+   * ================================================
+   * CUSTOMER LANDING PAGE
+   * ================================================
+   */
 
   return (
     <LandingPage
@@ -182,10 +185,6 @@ function AppContent() {
     />
   );
 }
-
-/* =====================================================
-   MAIN APP
-===================================================== */
 
 export default function App() {
   return (
