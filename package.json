@@ -4,8 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "next dev",
+    "dev:vite": "vite",
+    "build": "next build",
+    "start": "next start",
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
@@ -16,6 +18,7 @@
     "@supabase/supabase-js": "^2.57.4",
     "convex": "^1.43.0",
     "lucide-react": "^0.446.0",
+    "next": "13.5.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
