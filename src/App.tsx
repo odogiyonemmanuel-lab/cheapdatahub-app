@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 
 import LandingPage from "@/components/LandingPage";
@@ -7,6 +7,8 @@ import AppShell from "@/components/AppShell";
 
 import AdminLogin from "@/components/admin/AdminLogin";
 import AdminDashboard from "@/components/admin/AdminDashboard";
+
+import PaymentCallback from "@/pages/payment/callback";
 
 type View =
   | "dashboard"
@@ -20,12 +22,16 @@ type Screen =
   | "auth"
   | "app";
 
+/* =====================================================
+   LOADING SCREEN
+===================================================== */
+
 function LoadingScreen() {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
 
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        <div className="w-10 h-10 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
 
         <p className="text-sm text-slate-400">
           Loading CheapDataHub...
@@ -36,11 +42,12 @@ function LoadingScreen() {
   );
 }
 
+/* =====================================================
+   APP CONTENT
+===================================================== */
+
 function AppContent() {
-  const {
-    user,
-    loading,
-  } = useAuth();
+  const { user, loading } = useAuth();
 
   const [screen, setScreen] =
     useState<Screen>("landing");
@@ -49,40 +56,26 @@ function AppContent() {
     useState<View>("dashboard");
 
   /*
-   * Remove trailing slash so:
-   *
-   * /admin
-   * /admin/
-   *
-   * are treated the same.
+   * Read the current browser path.
    */
 
   const pathname =
-    window.location.pathname.replace(
-      /\/+$/,
-      ""
-    ) || "/";
+    window.location.pathname.replace(/\/+$/, "") || "/";
 
   /*
-   * ================================================
-   * ADMIN ROUTES
-   * ================================================
+   * Supported application routes.
    */
 
-  const isAdminLogin =
-    pathname === "/admin/login";
-
-  const isAdminDashboard =
+  const isAdminRoute =
     pathname === "/admin";
 
-  const isAdminRoute =
-    pathname === "/admin" ||
-    pathname.startsWith("/admin/");
+  const isPaymentCallbackRoute =
+    pathname === "/payment/callback";
 
   /*
-   * ================================================
-   * LOADING
-   * ================================================
+   * ===================================================
+   * AUTH LOADING
+   * ===================================================
    */
 
   if (loading) {
@@ -90,56 +83,62 @@ function AppContent() {
   }
 
   /*
-   * ================================================
-   * ADMIN LOGIN
-   * ================================================
+   * ===================================================
+   * FLUTTERWAVE PAYMENT CALLBACK
+   * ===================================================
+   *
+   * This route is intentionally checked BEFORE
+   * the normal customer application.
+   *
+   * Flutterwave redirects here after checkout.
    */
 
-  if (isAdminLogin) {
-    return <AdminLogin onSuccess={() => {}} />;
+  if (isPaymentCallbackRoute) {
+    return <PaymentCallback />;
   }
 
   /*
-   * ================================================
-   * ADMIN DASHBOARD
-   * ================================================
+   * ===================================================
+   * ADMIN AREA
+   * ===================================================
+   *
+   * /admin
+   *
+   * If there is no logged-in Supabase user:
+   * show AdminLogin.
+   *
+   * If there is a logged-in user:
+   * AdminDashboard performs the administrator
+   * authorization check.
    */
 
-  if (isAdminDashboard) {
-
-    /*
-     * There is no authenticated user.
-     *
-     * Send them to the dedicated admin login.
-     */
-
+  if (isAdminRoute) {
     if (!user) {
-      window.location.href =
-        "/admin/login";
+      return (
+        <AdminLogin
+          onSuccess={() => {
+            /*
+             * Authentication state will update through
+             * AuthProvider.
+             *
+             * Reloading the same URL makes the route
+             * deterministic and prevents returning to
+             * the customer landing page.
+             */
 
-      return <LoadingScreen />;
+            window.location.replace("/admin");
+          }}
+        />
+      );
     }
 
     return <AdminDashboard />;
   }
 
   /*
-   * ================================================
-   * ANY OTHER /admin/* ROUTE
-   * ================================================
-   */
-
-  if (isAdminRoute) {
-    window.location.href =
-      "/admin/login";
-
-    return <LoadingScreen />;
-  }
-
-  /*
-   * ================================================
+   * ===================================================
    * CUSTOMER APPLICATION
-   * ================================================
+   * ===================================================
    */
 
   if (user) {
@@ -156,9 +155,9 @@ function AppContent() {
   }
 
   /*
-   * ================================================
+   * ===================================================
    * CUSTOMER AUTH
-   * ================================================
+   * ===================================================
    */
 
   if (screen === "auth") {
@@ -172,9 +171,9 @@ function AppContent() {
   }
 
   /*
-   * ================================================
+   * ===================================================
    * CUSTOMER LANDING PAGE
-   * ================================================
+   * ===================================================
    */
 
   return (
@@ -185,6 +184,10 @@ function AppContent() {
     />
   );
 }
+
+/* =====================================================
+   MAIN APP
+===================================================== */
 
 export default function App() {
   return (
