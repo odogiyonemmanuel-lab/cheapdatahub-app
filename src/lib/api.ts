@@ -26,13 +26,9 @@ import { supabase } from "./supabase";
  */
 
 const SUPABASE_URL =
-  (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(
-    /\/+$/,
-    "",
-  ) ?? "";
+  (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined)?.replace(/\/+$/g, "") ?? "";
 
-const SUPABASE_ANON_KEY =
-  import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined;
 
 const WALLET_FUND_FUNCTION = SUPABASE_URL
   ? `${SUPABASE_URL}/functions/v1/wallet-fund`
@@ -118,11 +114,11 @@ export type VerifyWalletResult = {
 
 function requireEnv() {
   if (!SUPABASE_URL) {
-    throw new Error("Missing VITE_SUPABASE_URL.");
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL.");
   }
 
   if (!SUPABASE_ANON_KEY) {
-    throw new Error("Missing VITE_SUPABASE_ANON_KEY.");
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY.");
   }
 }
 
