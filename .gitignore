@@ -1,4 +1,19 @@
-logs
+# =========================
+# Dependencies
+# =========================
+node_modules/
+
+# =========================
+# Build output
+# =========================
+dist/
+dist-ssr/
+build/
+
+# =========================
+# Logs
+# =========================
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -6,18 +21,47 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# =========================
+# Local environment files
+# NEVER commit secrets
+# =========================
+.env
+.env.*
+!.env.example
 
+# =========================
+# Vercel
+# =========================
+.vercel/
+
+# =========================
+# Supabase local development
+# =========================
+.supabase/
+
+# =========================
+# Editor / IDE
+# =========================
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
+
+# Visual Studio
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-.env
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Temporary files
+# =========================
+*.tmp
+*.temp
+*.cache
