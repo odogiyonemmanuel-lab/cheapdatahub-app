@@ -27,10 +27,30 @@ async function requireAdmin() {
   }
 
   if (!data) {
-    throw new Error(
-      "Administrator access required."
-    );
+    throw new Error("Administrator access required.");
   }
 
   return user;
+}
+
+export type AdminUser = {
+  user_id: string;
+  is_active?: boolean;
+};
+
+export async function getAdminUsers(): Promise<AdminUser[]> {
+  await requireAdmin();
+
+  const { data, error } = await supabase
+    .from("cdh_admins")
+    .select("user_id, is_active")
+    .order("user_id", { ascending: true });
+
+  if (error) {
+    throw new Error(
+      `Unable to load administrator users: ${error.message}`
+    );
+  }
+
+  return data ?? [];
 }
