@@ -1,0 +1,7 @@
+project_id = "YOUR_SUPABASE_PROJECT_ID"
+
+[functions.vtu-proxy]
+verify_jwt = true
+
+[functions.flutterwave-verify]
+verify_jwt = true
