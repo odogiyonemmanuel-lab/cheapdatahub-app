@@ -11,16 +11,19 @@ async function requireAdmin() {
   } = await supabase.auth.getUser();
 
   if (userError) {
-    throw new Error(`Unable to verify login: ${userError.message}`);
+    throw new Error(
+      `Unable to verify login: ${userError.message}`,
+    );
   }
 
   if (!user) {
     throw new Error("You must be signed in.");
   }
 
-  const { data: isAdmin, error: adminError } = await supabase.rpc(
-    "cdh_is_current_user_admin",
-  );
+  const { data: isAdmin, error: adminError } =
+    await supabase.rpc(
+      "cdh_is_current_user_admin",
+    );
 
   if (adminError) {
     throw new Error(
@@ -29,7 +32,9 @@ async function requireAdmin() {
   }
 
   if (isAdmin !== true) {
-    throw new Error("Administrator access required.");
+    throw new Error(
+      "Administrator access required.",
+    );
   }
 
   return user;
@@ -46,6 +51,7 @@ export type AdminUser = {
   full_name: string;
   wallet_balance: number;
   is_active: boolean;
+  created_at?: string | null;
 };
 
 export type AdminStats = {
@@ -86,54 +92,95 @@ export type PricingRow = {
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-const numberValue = (value: unknown): number => {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+const numberValue = (
+  value: unknown,
+): number => {
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : 0;
 };
 
 /* -------------------------------------------------------------------------- */
 /* Admin users                                                                */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Your database does not have public.profiles.
- *
- * For now, users are loaded from cdh_wallets.
- *
- * Email information requires a secure server-side function
- * because auth.users cannot be queried directly from the browser.
- */
 export async function getAdminUsers(
   search = "",
 ): Promise<AdminUser[]> {
   await requireAdmin();
 
-  const { data, error } = await supabase
-    .from("cdh_wallets")
-    .select("user_id, balance")
-    .order("updated_at", {
-      ascending: false,
-    })
-    .limit(100);
+  const { data, error } =
+    await supabase.rpc(
+      "cdh_admin_users",
+    );
 
   if (error) {
-    throw new Error(`Unable to load users: ${error.message}`);
+    throw new Error(
+      `Unable to load users: ${error.message}`,
+    );
   }
 
-  let users = (data ?? []).map((row) => ({
-    id: row.user_id,
-    user_id: row.user_id,
-    email: "",
-    full_name: "",
-    wallet_balance: numberValue(row.balance),
-    is_active: true,
-  }));
+  let users: AdminUser[] =
+    (data ?? []).map(
+      (row: Record<string, unknown>) => ({
+        id: String(
+          row.id ??
+            row.user_id ??
+            "",
+        ),
 
-  const term = search.trim().toLowerCase();
+        user_id: String(
+          row.user_id ??
+            row.id ??
+            "",
+        ),
+
+        email: String(
+          row.email ?? "",
+        ),
+
+        full_name:
+          String(
+            row.full_name ??
+              "",
+          ).trim() ||
+          "Unnamed user",
+
+        wallet_balance:
+          numberValue(
+            row.wallet_balance ??
+              row.balance,
+          ),
+
+        is_active:
+          row.is_active !== false,
+
+        created_at:
+          row.created_at
+            ? String(
+                row.created_at,
+              )
+            : null,
+      }),
+    );
+
+  const term =
+    search.trim().toLowerCase();
 
   if (term) {
-    users = users.filter((user) =>
-      user.user_id.toLowerCase().includes(term),
+    users = users.filter(
+      (user) =>
+        user.full_name
+          .toLowerCase()
+          .includes(term) ||
+        user.email
+          .toLowerCase()
+          .includes(term) ||
+        user.user_id
+          .toLowerCase()
+          .includes(term),
     );
   }
 
@@ -141,7 +188,7 @@ export async function getAdminUsers(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Set admin                                                                  */
+/* Set administrator                                                          */
 /* -------------------------------------------------------------------------- */
 
 export async function setAdmin(
@@ -151,18 +198,17 @@ export async function setAdmin(
   await requireAdmin();
 
   if (!userId) {
-    throw new Error("User ID is required.");
+    throw new Error(
+      "User ID is required.",
+    );
   }
 
-  const { error } = await supabase
-    .from("cdh_admins")
-    .upsert(
+  const { data, error } =
+    await supabase.rpc(
+      "cdh_admin_set_admin",
       {
-        user_id: userId,
-        is_active: active,
-      },
-      {
-        onConflict: "user_id",
+        p_user_id: userId,
+        p_active: active,
       },
     );
 
@@ -173,8 +219,18 @@ export async function setAdmin(
   }
 
   return {
-    success: true,
+    success: data === true,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Remove administrator                                                       */
+/* -------------------------------------------------------------------------- */
+
+export async function removeAdmin(
+  userId: string,
+) {
+  return setAdmin(userId, false);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -191,54 +247,38 @@ export async function adjustWallet(
   const value = Number(amount);
 
   if (!userId) {
-    throw new Error("User ID is required.");
+    throw new Error(
+      "User ID is required.",
+    );
   }
 
-  if (!Number.isFinite(value) || value === 0) {
+  if (
+    !Number.isFinite(value) ||
+    value === 0
+  ) {
     throw new Error(
       "Wallet adjustment must be a non-zero number.",
     );
   }
 
-  if (!reason.trim()) {
-    throw new Error("A reason is required.");
-  }
+  const cleanReason =
+    reason.trim();
 
-  const { data: wallet, error: walletError } =
-    await supabase
-      .from("cdh_wallets")
-      .select("user_id, balance")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-  if (walletError) {
+  if (!cleanReason) {
     throw new Error(
-      `Unable to read wallet: ${walletError.message}`,
+      "A reason is required.",
     );
   }
 
-  if (!wallet) {
-    throw new Error(
-      "Wallet not found for this user.",
+  const { data, error } =
+    await supabase.rpc(
+      "cdh_admin_adjust_wallet",
+      {
+        p_user_id: userId,
+        p_amount: value,
+        p_reason: cleanReason,
+      },
     );
-  }
-
-  const nextBalance =
-    numberValue(wallet.balance) + value;
-
-  if (nextBalance < 0) {
-    throw new Error(
-      "Wallet balance cannot become negative.",
-    );
-  }
-
-  const { error } = await supabase
-    .from("cdh_wallets")
-    .update({
-      balance: nextBalance,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("user_id", userId);
 
   if (error) {
     throw new Error(
@@ -246,10 +286,24 @@ export async function adjustWallet(
     );
   }
 
+  const result =
+    Array.isArray(data)
+      ? data[0]
+      : data;
+
   return {
     success: true,
-    balance: nextBalance,
-    reason,
+
+    balance:
+      numberValue(
+        result?.balance,
+      ),
+
+    reference:
+      result?.reference ??
+      null,
+
+    reason: cleanReason,
   };
 }
 
@@ -262,22 +316,26 @@ export async function getAdminTransactions(): Promise<
 > {
   await requireAdmin();
 
-  const { data, error } = await supabase
-    .from("cdh_transactions")
-    .select(`
-      id,
-      user_id,
-      transaction_type,
-      status,
-      reference,
-      plan_name,
-      customer_amount,
-      created_at
-    `)
-    .order("created_at", {
-      ascending: false,
-    })
-    .limit(100);
+  const { data, error } =
+    await supabase
+      .from("cdh_transactions")
+      .select(`
+        id,
+        user_id,
+        transaction_type,
+        status,
+        reference,
+        plan_name,
+        customer_amount,
+        created_at
+      `)
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        },
+      )
+      .limit(100);
 
   if (error) {
     throw new Error(
@@ -285,17 +343,41 @@ export async function getAdminTransactions(): Promise<
     );
   }
 
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    user_id: row.user_id,
-    user_email: null,
-    type: row.transaction_type ?? "",
-    plan_name: row.plan_name ?? null,
-    amount: numberValue(row.customer_amount),
-    status: row.status ?? "",
-    reference: row.reference ?? null,
-    created_at: row.created_at,
-  }));
+  return (data ?? []).map(
+    (row) => ({
+      id: row.id,
+
+      user_id:
+        row.user_id,
+
+      user_email:
+        null,
+
+      type:
+        row.transaction_type ??
+        "",
+
+      plan_name:
+        row.plan_name ??
+        null,
+
+      amount:
+        numberValue(
+          row.customer_amount,
+        ),
+
+      status:
+        row.status ??
+        "",
+
+      reference:
+        row.reference ??
+        null,
+
+      created_at:
+        row.created_at,
+    }),
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -313,10 +395,14 @@ export async function getAdminStats(): Promise<
   ] = await Promise.all([
     supabase
       .from("cdh_wallets")
-      .select("user_id, balance"),
+      .select(
+        "user_id, balance",
+      ),
 
     supabase
-      .from("cdh_transactions")
+      .from(
+        "cdh_transactions",
+      )
       .select(`
         status,
         customer_amount,
@@ -330,7 +416,9 @@ export async function getAdminStats(): Promise<
     );
   }
 
-  if (transactionsResult.error) {
+  if (
+    transactionsResult.error
+  ) {
     throw new Error(
       `Unable to load transaction statistics: ${transactionsResult.error.message}`,
     );
@@ -344,31 +432,49 @@ export async function getAdminStats(): Promise<
 
   const successful =
     transactions.filter(
-      (row) =>
-        String(row.status).toLowerCase() ===
-        "success",
+      (row) => {
+        const status =
+          String(
+            row.status ?? "",
+          ).toLowerCase();
+
+        return (
+          status === "success" ||
+          status ===
+            "successful"
+        );
+      },
     );
 
   const pending =
     transactions.filter(
       (row) =>
-        String(row.status).toLowerCase() ===
+        String(
+          row.status ?? "",
+        ).toLowerCase() ===
         "pending",
     );
 
-  const uniqueUsers = new Set(
-    wallets
-      .map((row) => row.user_id)
-      .filter(Boolean),
-  );
+  const uniqueUsers =
+    new Set(
+      wallets
+        .map(
+          (row) =>
+            row.user_id,
+        )
+        .filter(Boolean),
+    );
 
   return {
-    users: uniqueUsers.size,
+    users:
+      uniqueUsers.size,
 
     fundedWallets:
       wallets.filter(
         (row) =>
-          numberValue(row.balance) > 0,
+          numberValue(
+            row.balance,
+          ) > 0,
       ).length,
 
     successfulTransactions:
@@ -388,7 +494,9 @@ export async function getAdminStats(): Promise<
       successful.reduce(
         (sum, row) =>
           sum +
-          numberValue(row.profit),
+          numberValue(
+            row.profit,
+          ),
         0,
       ),
 
@@ -406,12 +514,18 @@ export async function getPricing(): Promise<
 > {
   await requireAdmin();
 
-  const { data, error } = await supabase
-    .from("cdh_product_pricing")
-    .select("*")
-    .order("network", {
-      ascending: true,
-    });
+  const { data, error } =
+    await supabase
+      .from(
+        "cdh_product_pricing",
+      )
+      .select("*")
+      .order(
+        "network",
+        {
+          ascending: true,
+        },
+      );
 
   if (error) {
     throw new Error(
@@ -419,31 +533,60 @@ export async function getPricing(): Promise<
     );
   }
 
-  return (data ?? []).map((row) => {
-    const providerCost = numberValue(
-      row.provider_cost,
-    );
+  return (data ?? []).map(
+    (row) => {
+      const providerCost =
+        numberValue(
+          row.provider_cost,
+        );
 
-    const customerPrice = numberValue(
-      row.customer_price,
-    );
+      const customerPrice =
+        numberValue(
+          row.customer_price,
+        );
 
-    return {
-      id: row.id,
-      network: row.network ?? "",
-      plan_name: row.plan_name ?? "",
-      plan_code: row.plan_code ?? null,
-      data_size: row.data_size ?? null,
-      validity: row.validity ?? null,
-      provider_cost: providerCost,
-      customer_price: customerPrice,
-      profit: numberValue(
-        row.profit ??
-          customerPrice - providerCost,
-      ),
-      is_active: row.is_active !== false,
-    };
-  });
+      return {
+        id:
+          String(row.id),
+
+        network:
+          row.network ?? "",
+
+        plan_name:
+          row.plan_name ??
+          "",
+
+        plan_code:
+          row.plan_code ??
+          null,
+
+        data_size:
+          row.data_size ??
+          null,
+
+        validity:
+          row.validity ??
+          null,
+
+        provider_cost:
+          providerCost,
+
+        customer_price:
+          customerPrice,
+
+        profit:
+          numberValue(
+            row.profit ??
+              customerPrice -
+                providerCost,
+          ),
+
+        is_active:
+          row.is_active !==
+          false,
+      };
+    },
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -457,13 +600,14 @@ export async function updatePricing(
 ) {
   await requireAdmin();
 
-  const price = Number(customerPrice);
-
   if (!id) {
     throw new Error(
       "Pricing row ID is required.",
     );
   }
+
+  const price =
+    Number(customerPrice);
 
   if (
     !Number.isFinite(price) ||
@@ -474,12 +618,18 @@ export async function updatePricing(
     );
   }
 
-  const { data: current, error: currentError } =
-    await supabase
-      .from("cdh_product_pricing")
-      .select("provider_cost")
-      .eq("id", id)
-      .maybeSingle();
+  const {
+    data: current,
+    error: currentError,
+  } = await supabase
+    .from(
+      "cdh_product_pricing",
+    )
+    .select(
+      "provider_cost",
+    )
+    .eq("id", id)
+    .maybeSingle();
 
   if (currentError) {
     throw new Error(
@@ -488,23 +638,34 @@ export async function updatePricing(
   }
 
   if (!current) {
-    throw new Error("Pricing row not found.");
+    throw new Error(
+      "Pricing row not found.",
+    );
   }
 
   const providerCost =
-    numberValue(current.provider_cost);
+    numberValue(
+      current.provider_cost,
+    );
 
   const profit =
     price - providerCost;
 
-  const { error } = await supabase
-    .from("cdh_product_pricing")
-    .update({
-      customer_price: price,
-      profit,
-      is_active: isActive,
-    })
-    .eq("id", id);
+  const { error } =
+    await supabase
+      .from(
+        "cdh_product_pricing",
+      )
+      .update({
+        customer_price:
+          price,
+
+        profit,
+
+        is_active:
+          isActive,
+      })
+      .eq("id", id);
 
   if (error) {
     throw new Error(
@@ -514,14 +675,21 @@ export async function updatePricing(
 
   return {
     success: true,
-    customer_price: price,
+
+    customer_price:
+      price,
+
     profit,
-    is_active: isActive,
+
+    is_active:
+      isActive,
   };
 }
 
 /* -------------------------------------------------------------------------- */
-/* Export                                                                     */
+/* Export admin guard                                                         */
 /* -------------------------------------------------------------------------- */
 
-export { requireAdmin };
+export {
+  requireAdmin,
+};
