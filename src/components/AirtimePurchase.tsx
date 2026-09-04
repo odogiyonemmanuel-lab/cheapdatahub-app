@@ -16,7 +16,7 @@ export default function AirtimePurchase({ onSuccess }: { onSuccess: () => void }
     setError(null);
     setSuccess(null);
 
-    if (!phone || phone.length < 11) {
+    if (!/^\d{11}$/.test(phone)) {
       setError("Enter a valid 11-digit phone number");
       return;
     }
@@ -28,12 +28,20 @@ export default function AirtimePurchase({ onSuccess }: { onSuccess: () => void }
     setLoading(true);
     try {
       const result = await purchaseAirtime({
-        provider_id: selectedNetwork.id,
+        provider_id: selectedNetwork.id.toString(),
         phone_number: phone,
         amount: Number(amount),
         network: selectedNetwork.name,
       });
-      setSuccess(result.message);
+
+      const pending = (result as { pending?: boolean }).pending ||
+        (result as { status?: string }).status === "processing";
+
+      setSuccess(
+        pending
+          ? result.message || "Your airtime purchase is processing. Check your transaction history for the final status."
+          : result.message || "Airtime purchase successful."
+      );
       setPhone("");
       setAmount("");
       onSuccess();
@@ -63,7 +71,6 @@ export default function AirtimePurchase({ onSuccess }: { onSuccess: () => void }
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Network selector */}
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-3">Select Network</label>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -90,7 +97,6 @@ export default function AirtimePurchase({ onSuccess }: { onSuccess: () => void }
           </div>
         </div>
 
-        {/* Phone number */}
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-1.5">Phone Number</label>
           <input
@@ -103,7 +109,6 @@ export default function AirtimePurchase({ onSuccess }: { onSuccess: () => void }
           />
         </div>
 
-        {/* Amount */}
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-1.5">Amount (NGN)</label>
           <input
@@ -133,14 +138,11 @@ export default function AirtimePurchase({ onSuccess }: { onSuccess: () => void }
           </div>
         </div>
 
-        {/* Summary */}
         {amount && phone && (
           <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-400">You are sending</span>
-              <span className="font-semibold text-white">
-                {formatNaira(Number(amount))} airtime
-              </span>
+              <span className="font-semibold text-white">{formatNaira(Number(amount))} airtime</span>
             </div>
             <div className="flex items-center justify-between text-sm mt-2">
               <span className="text-slate-400">To</span>
@@ -160,13 +162,11 @@ export default function AirtimePurchase({ onSuccess }: { onSuccess: () => void }
         >
           {loading ? (
             <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Processing...
+              <Loader2 className="w-5 h-5 animate-spin" /> Processing...
             </>
           ) : (
             <>
-              <Smartphone className="w-5 h-5" />
-              Buy Airtime
+              <Smartphone className="w-5 h-5" /> Buy Airtime
             </>
           )}
         </button>
