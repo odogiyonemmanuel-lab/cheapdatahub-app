@@ -6,4 +6,4 @@ import type { Transaction } from "@/types";
 import { Zap, LayoutDashboard, Smartphone, Wifi, Receipt, LogOut, Wallet as WalletIcon, Loader2, TrendingUp, CheckCircle2, XCircle, Clock, Plus, CreditCard, AlertCircle, RefreshCw } from "lucide-react";
 import AirtimePurchase from "./AirtimePurchase";
 import DataPurchase from "./DataPurchase";
-export default function AppShell({view,setView,onNavigate}: any){ return <div />; }
+export default function AppShell({view,setView,onNavigate}: any){ return null; }
