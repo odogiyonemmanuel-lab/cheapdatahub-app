@@ -45,7 +45,10 @@ function AppContent() {
   }
 
   if (user) {
-    return <AppShell view={view} setView={setView} onNavigate={(nextView) => { setView(nextView); setScreen("app"); }} />;
+    return <div className="relative min-h-screen">
+      <AppShell view={view} setView={setView} onNavigate={(nextView) => { setView(nextView); setScreen("app"); }} />
+      <a href="/referrals" className="fixed right-4 bottom-20 lg:bottom-6 z-50 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm rounded-full px-4 py-3 shadow-lg shadow-emerald-500/20 transition">🎁 Refer & Earn ₦20</a>
+    </div>;
   }
 
   if (screen === "auth") return <AuthScreen onSuccess={() => setScreen("app")} />;
