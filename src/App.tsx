@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import LandingPage from "@/components/LandingPage";
 import AuthScreen from "@/components/AuthScreen";
@@ -11,6 +11,8 @@ import Referrals from "@/pages/Referrals";
 type View = "dashboard" | "fund-wallet" | "airtime" | "data" | "transactions";
 type Screen = "landing" | "auth" | "app";
 
+const REFERRAL_STORAGE_KEY = "cdh_pending_referral";
+
 function LoadingScreen() {
   return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="flex flex-col items-center gap-4"><div className="w-10 h-10 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" /><p className="text-sm text-slate-400">Loading CheapDataHub...</p></div></div>;
 }
@@ -19,6 +21,12 @@ function AppContent() {
   const { user, loading } = useAuth();
   const [screen, setScreen] = useState<Screen>("landing");
   const [view, setView] = useState<View>("dashboard");
+
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref?.trim()) localStorage.setItem(REFERRAL_STORAGE_KEY, ref.trim().toUpperCase());
+  }, []);
+
   const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
   const isAdminRoute = pathname === "/admin";
   const isPaymentCallbackRoute = pathname === "/payment/callback";
