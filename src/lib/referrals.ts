@@ -43,8 +43,8 @@ export async function getReferralSummary(): Promise<ReferralSummary> {
     referralCode,
     referralLink: `${window.location.origin}/?ref=${encodeURIComponent(referralCode)}`,
     invited: referrals?.length ?? 0,
-    rewarded: (referrals ?? []).filter(r => r.status === "rewarded").length,
-    pending: (referrals ?? []).filter(r => r.status === "pending").length,
+    rewarded: (referrals ?? []).filter(r => r.status === "completed" || r.status === "rewarded").length,
+    pending: (referrals ?? []).filter(r => r.status !== "completed" && r.status !== "rewarded").length,
     totalEarned,
   };
 }
