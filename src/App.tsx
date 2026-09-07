@@ -1,105 +1,49 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AuthProvider, useAuth } from "@/lib/auth";
-
 import LandingPage from "@/components/LandingPage";
 import AuthScreen from "@/components/AuthScreen";
 import AppShell from "@/components/AppShell";
-
 import AdminLogin from "@/components/admin/AdminLogin";
 import AdminDashboard from "@/components/admin/AdminDashboard";
-
 import PaymentCallback from "@/pages/payment/callback.tsx";
+import Referrals from "@/pages/Referrals";
 
-type View =
-  | "dashboard"
-  | "fund-wallet"
-  | "airtime"
-  | "data"
-  | "transactions";
-
-type Screen =
-  | "landing"
-  | "auth"
-  | "app";
+type View = "dashboard" | "fund-wallet" | "airtime" | "data" | "transactions";
+type Screen = "landing" | "auth" | "app";
 
 function LoadingScreen() {
-  return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-10 h-10 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-slate-400">Loading CheapDataHub...</p>
-      </div>
-    </div>
-  );
+  return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="flex flex-col items-center gap-4"><div className="w-10 h-10 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" /><p className="text-sm text-slate-400">Loading CheapDataHub...</p></div></div>;
 }
 
 function AppContent() {
   const { user, loading } = useAuth();
   const [screen, setScreen] = useState<Screen>("landing");
   const [view, setView] = useState<View>("dashboard");
-
   const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
   const isAdminRoute = pathname === "/admin";
   const isPaymentCallbackRoute = pathname === "/payment/callback";
+  const isReferralRoute = pathname === "/referrals";
 
-  if (loading) {
-    return <LoadingScreen />;
-  }
+  if (loading) return <LoadingScreen />;
+  if (isPaymentCallbackRoute) return <PaymentCallback />;
 
-  if (isPaymentCallbackRoute) {
-    return <PaymentCallback />;
+  if (isReferralRoute) {
+    return user ? <Referrals /> : <AuthScreen onSuccess={() => window.location.replace("/referrals")} />;
   }
 
   if (isAdminRoute) {
-    if (!user) {
-      return (
-        <AdminLogin
-          onSuccess={() => {
-            window.location.replace("/admin");
-          }}
-        />
-      );
-    }
-
+    if (!user) return <AdminLogin onSuccess={() => window.location.replace("/admin")} />;
     return <AdminDashboard />;
   }
 
   if (user) {
-    return (
-      <AppShell
-        view={view}
-        setView={setView}
-        onNavigate={(nextView) => {
-          setView(nextView);
-          setScreen("app");
-        }}
-      />
-    );
+    return <AppShell view={view} setView={setView} onNavigate={(nextView) => { setView(nextView); setScreen("app"); }} />;
   }
 
-  if (screen === "auth") {
-    return (
-      <AuthScreen
-        onSuccess={() => {
-          setScreen("app");
-        }}
-      />
-    );
-  }
-
-  return (
-    <LandingPage
-      onGetStarted={() => {
-        setScreen("auth");
-      }}
-    />
-  );
+  if (screen === "auth") return <AuthScreen onSuccess={() => setScreen("app")} />;
+  return <LandingPage onGetStarted={() => setScreen("auth")} />;
 }
 
 export default function App() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
-  );
+  return <AuthProvider><AppContent /></AuthProvider>;
 }
