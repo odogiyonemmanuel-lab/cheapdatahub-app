@@ -47,7 +47,8 @@ function AppContent() {
   if (user) {
     return <div className="relative min-h-screen">
       <AppShell view={view} setView={setView} onNavigate={(nextView) => { setView(nextView); setScreen("app"); }} />
-      <a href="/referrals" className="fixed right-4 bottom-20 lg:bottom-6 z-50 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm rounded-full px-4 py-3 shadow-lg shadow-emerald-500/20 transition">🎁 Refer & Earn ₦20</a>
+      <a href="/referrals" className="lg:hidden fixed right-2 bottom-[78px] z-50 flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:border-emerald-500/50 text-emerald-400 font-semibold text-[10px] rounded-lg px-2.5 py-2 shadow-lg transition" aria-label="Refer and Earn"><span>🎁</span><span>Refer & Earn</span></a>
+      <a href="/referrals" className="hidden lg:flex fixed left-4 bottom-16 w-56 items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15 transition"><span className="text-base">🎁</span><span>Refer & Earn ₦20</span></a>
     </div>;
   }
 
