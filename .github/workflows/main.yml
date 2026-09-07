@@ -55,6 +55,26 @@ jobs:
           path.write_text(text.replace(marker, contact + '\n' + marker, 1))
           PY
 
+      - name: Generate SEO crawler files
+        run: |
+          mkdir -p public
+          cat > public/robots.txt <<'EOF'
+          User-agent: *
+          Allow: /
+
+          Sitemap: https://cheapdatahub.top/sitemap.xml
+          EOF
+          cat > public/sitemap.xml <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+            <url>
+              <loc>https://cheapdatahub.top/</loc>
+              <changefreq>weekly</changefreq>
+              <priority>1.0</priority>
+            </url>
+          </urlset>
+          EOF
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -71,7 +91,10 @@ jobs:
         run: npm run build
 
       - name: Verify build output
-        run: test -f dist/index.html
+        run: |
+          test -f dist/index.html
+          test -f dist/robots.txt
+          test -f dist/sitemap.xml
 
   deploy:
     name: Deploy to Vercel
@@ -122,6 +145,26 @@ jobs:
               raise SystemExit('LandingPage footer marker not found')
           path.write_text(text.replace(marker, contact + '\n' + marker, 1))
           PY
+
+      - name: Generate SEO crawler files
+        run: |
+          mkdir -p public
+          cat > public/robots.txt <<'EOF'
+          User-agent: *
+          Allow: /
+
+          Sitemap: https://cheapdatahub.top/sitemap.xml
+          EOF
+          cat > public/sitemap.xml <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+            <url>
+              <loc>https://cheapdatahub.top/</loc>
+              <changefreq>weekly</changefreq>
+              <priority>1.0</priority>
+            </url>
+          </urlset>
+          EOF
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
