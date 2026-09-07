@@ -18,6 +18,43 @@ jobs:
         run: |
           find src -type f \( -name '*.tsx' -o -name '*.ts' -o -name '*.jsx' -o -name '*.js' \) -print0 | xargs -0 sed -i 's/SwiftVTU/CheapDataHub/g'
 
+      - name: Add contact section to landing theme
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/components/LandingPage.tsx')
+          text = path.read_text()
+          marker = '      </footer>'
+          contact = '''
+
+              <div className="mt-8 pt-6 border-t border-slate-800/80 text-center">
+                <h3 className="text-sm font-semibold text-white">Contact Us</h3>
+                <p className="mt-2 text-xs text-slate-500">
+                  Need help? Reach the CheapDataHub Admin directly.
+                </p>
+                <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <a
+                    href="mailto:dataodogiyon@gmail.com"
+                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm font-medium text-slate-300 hover:border-emerald-500/40 hover:text-white transition"
+                  >
+                    Email: dataodogiyon@gmail.com
+                  </a>
+                  <a
+                    href="https://wa.me/2347031261521?text=Hello%20CheapDataHub%20Admin"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition"
+                  >
+                    WhatsApp Admin: 07031261521
+                  </a>
+                </div>
+              </div>'''
+          if marker not in text:
+              raise SystemExit('LandingPage footer marker not found')
+          path.write_text(text.replace(marker, contact + '\n' + marker, 1))
+          PY
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -48,6 +85,43 @@ jobs:
       - name: Apply CheapDataHub branding
         run: |
           find src -type f \( -name '*.tsx' -o -name '*.ts' -o -name '*.jsx' -o -name '*.js' \) -print0 | xargs -0 sed -i 's/SwiftVTU/CheapDataHub/g'
+
+      - name: Add contact section to landing theme
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/components/LandingPage.tsx')
+          text = path.read_text()
+          marker = '      </footer>'
+          contact = '''
+
+              <div className="mt-8 pt-6 border-t border-slate-800/80 text-center">
+                <h3 className="text-sm font-semibold text-white">Contact Us</h3>
+                <p className="mt-2 text-xs text-slate-500">
+                  Need help? Reach the CheapDataHub Admin directly.
+                </p>
+                <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <a
+                    href="mailto:dataodogiyon@gmail.com"
+                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm font-medium text-slate-300 hover:border-emerald-500/40 hover:text-white transition"
+                  >
+                    Email: dataodogiyon@gmail.com
+                  </a>
+                  <a
+                    href="https://wa.me/2347031261521?text=Hello%20CheapDataHub%20Admin"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition"
+                  >
+                    WhatsApp Admin: 07031261521
+                  </a>
+                </div>
+              </div>'''
+          if marker not in text:
+              raise SystemExit('LandingPage footer marker not found')
+          path.write_text(text.replace(marker, contact + '\n' + marker, 1))
+          PY
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
