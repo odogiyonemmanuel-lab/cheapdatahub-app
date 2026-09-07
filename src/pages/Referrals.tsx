@@ -28,8 +28,8 @@ export default function Referrals() {
       <div className="max-w-3xl mx-auto">
         <button onClick={() => window.location.href = "/"} className="inline-flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6"><ArrowLeft className="w-4 h-4" />Back to CheapDataHub</button>
         <div className="bg-gradient-to-br from-emerald-500/15 to-teal-500/10 border border-emerald-500/20 rounded-2xl p-6 mb-5">
-          <div className="flex items-center gap-3 mb-3"><Gift className="w-7 h-7 text-emerald-400" /><h1 className="text-2xl font-bold">Refer & Earn</h1></div>
-          <p className="text-slate-300 text-sm leading-6">Invite a friend to CheapDataHub. When your friend completes their first successful airtime or data purchase, you both receive <strong className="text-emerald-400">₦50</strong> in your wallets.</p>
+          <div className="flex items-center gap-3 mb-3"><Gift className="w-7 h-7 text-emerald-400" /><h1 className="text-2xl font-bold">Refer & Earn ₦20</h1></div>
+          <p className="text-slate-300 text-sm leading-6">Invite a friend to CheapDataHub. Your friend receives <strong className="text-emerald-400">₦20</strong> after their first successful wallet funding of ₦500 or more, and you receive <strong className="text-emerald-400">₦20</strong> after their first successful airtime or data purchase.</p>
         </div>
 
         {loading && <div className="text-slate-400 py-10 text-center">Loading your referral details...</div>}
@@ -51,12 +51,12 @@ export default function Referrals() {
               <input readOnly value={summary.referralLink} className="min-w-0 flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300" />
               <button onClick={copy} className="shrink-0 inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold rounded-lg px-3 py-2 text-sm">{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? "Copied" : "Copy"}</button>
             </div>
-            <p className="text-xs text-slate-500 mt-3">Example: your friend opens the link, signs up, and their first successful purchase unlocks both ₦50 bonuses.</p>
+            <p className="text-xs text-slate-500 mt-3">Your friend can open the link, sign up with the referral code, fund at least ₦500, and then make a data or airtime purchase.</p>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
             <h2 className="font-semibold mb-4">Referral history</h2>
-            {history.length === 0 ? <p className="text-sm text-slate-500">No referrals yet. Share your link to get started.</p> : <div className="space-y-3">{history.map(item => <div key={item.id} className="flex items-center justify-between border-b border-slate-800 pb-3 last:border-0"><div><div className="text-sm text-slate-300">Referral</div><div className="text-xs text-slate-500">{new Date(item.created_at).toLocaleDateString("en-NG")}</div></div><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${item.status === "rewarded" ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>{item.status === "rewarded" ? "Rewarded ₦50" : "Waiting for first purchase"}</span></div>)}</div>}
+            {history.length === 0 ? <p className="text-sm text-slate-500">No referrals yet. Share your link to get started.</p> : <div className="space-y-3">{history.map(item => <div key={item.id} className="flex items-center justify-between border-b border-slate-800 pb-3 last:border-0"><div><div className="text-sm text-slate-300">Referral</div><div className="text-xs text-slate-500">{new Date(item.created_at).toLocaleDateString("en-NG")}</div></div><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${item.status === "completed" || item.status === "rewarded" ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>{item.status === "completed" || item.status === "rewarded" ? "Rewarded ₦20" : "Waiting for qualifying activity"}</span></div>)}</div>}
           </div>
         </>}
       </div>
