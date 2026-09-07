@@ -18,7 +18,7 @@ jobs:
         run: |
           find src -type f \( -name '*.tsx' -o -name '*.ts' -o -name '*.jsx' -o -name '*.js' \) -print0 | xargs -0 sed -i 's/SwiftVTU/CheapDataHub/g'
 
-      - name: Add contact section to landing theme
+      - name: Add polished contact section to landing footer
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -28,30 +28,39 @@ jobs:
           marker = '      </footer>'
           contact = '''
 
-              <div className="mt-8 pt-6 border-t border-slate-800/80 text-center">
-                <h3 className="text-sm font-semibold text-white">Contact Us</h3>
-                <p className="mt-2 text-xs text-slate-500">
-                  Need help? Reach the CheapDataHub Admin directly.
+              <div className="mt-8 pt-7 border-t border-slate-800/80 text-center">
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  Need help?
+                </div>
+                <h3 className="mt-3 text-base font-bold text-white">Contact Us</h3>
+                <p className="mt-1.5 text-sm text-slate-400">
+                  Reach the CheapDataHub Admin for support and assistance.
                 </p>
-                <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-3">
                   <a
-                    href="mailto:dataodogiyon@gmail.com"
-                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm font-medium text-slate-300 hover:border-emerald-500/40 hover:text-white transition"
+                    href="mailto:dataodogiyonemmanuel@gmail.com"
+                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900/80 px-5 py-3 text-sm font-semibold text-slate-200 hover:border-emerald-500/50 hover:bg-slate-900 hover:text-emerald-300 transition shadow-sm"
                   >
-                    Email: dataodogiyon@gmail.com
+                    Email Us
                   </a>
                   <a
                     href="https://wa.me/2347031261521?text=Hello%20CheapDataHub%20Admin"
                     target="_blank"
                     rel="noreferrer"
-                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition"
+                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-slate-950 hover:bg-emerald-400 transition shadow-lg shadow-emerald-500/10"
                   >
-                    WhatsApp Admin: 07031261521
+                    WhatsApp Admin
                   </a>
                 </div>
+                <p className="mt-3 text-xs text-slate-500">
+                  07031261521 · dataodogiyonemmanuel@gmail.com
+                </p>
               </div>'''
           if marker not in text:
               raise SystemExit('LandingPage footer marker not found')
+          if 'Contact Us' in text:
+              raise SystemExit('Contact section already exists in LandingPage source')
           path.write_text(text.replace(marker, contact + '\n' + marker, 1))
           PY
 
@@ -109,7 +118,7 @@ jobs:
         run: |
           find src -type f \( -name '*.tsx' -o -name '*.ts' -o -name '*.jsx' -o -name '*.js' \) -print0 | xargs -0 sed -i 's/SwiftVTU/CheapDataHub/g'
 
-      - name: Add contact section to landing theme
+      - name: Add polished contact section to landing footer
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -119,30 +128,39 @@ jobs:
           marker = '      </footer>'
           contact = '''
 
-              <div className="mt-8 pt-6 border-t border-slate-800/80 text-center">
-                <h3 className="text-sm font-semibold text-white">Contact Us</h3>
-                <p className="mt-2 text-xs text-slate-500">
-                  Need help? Reach the CheapDataHub Admin directly.
+              <div className="mt-8 pt-7 border-t border-slate-800/80 text-center">
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  Need help?
+                </div>
+                <h3 className="mt-3 text-base font-bold text-white">Contact Us</h3>
+                <p className="mt-1.5 text-sm text-slate-400">
+                  Reach the CheapDataHub Admin for support and assistance.
                 </p>
-                <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-3">
                   <a
-                    href="mailto:dataodogiyon@gmail.com"
-                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm font-medium text-slate-300 hover:border-emerald-500/40 hover:text-white transition"
+                    href="mailto:dataodogiyonemmanuel@gmail.com"
+                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900/80 px-5 py-3 text-sm font-semibold text-slate-200 hover:border-emerald-500/50 hover:bg-slate-900 hover:text-emerald-300 transition shadow-sm"
                   >
-                    Email: dataodogiyon@gmail.com
+                    Email Us
                   </a>
                   <a
                     href="https://wa.me/2347031261521?text=Hello%20CheapDataHub%20Admin"
                     target="_blank"
                     rel="noreferrer"
-                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition"
+                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-slate-950 hover:bg-emerald-400 transition shadow-lg shadow-emerald-500/10"
                   >
-                    WhatsApp Admin: 07031261521
+                    WhatsApp Admin
                   </a>
                 </div>
+                <p className="mt-3 text-xs text-slate-500">
+                  07031261521 · dataodogiyonemmanuel@gmail.com
+                </p>
               </div>'''
           if marker not in text:
               raise SystemExit('LandingPage footer marker not found')
+          if 'Contact Us' in text:
+              raise SystemExit('Contact section already exists in LandingPage source')
           path.write_text(text.replace(marker, contact + '\n' + marker, 1))
           PY
 
