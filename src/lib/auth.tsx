@@ -8,7 +8,7 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 
-type AuthResult = { error: string | null };
+type AuthResult = { error: string | null; authenticated?: boolean };
 
 type AuthContextType = {
   session: Session | null;
@@ -89,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: getAuthErrorMessage(error) };
       }
       console.log("Supabase sign-up successful:", { userId: data.user?.id, email: data.user?.email, sessionCreated: !!data.session });
-      return { error: null };
+      return { error: null, authenticated: !!data.session };
     } catch (error) {
       console.error("Sign-up request failed:", error);
       return { error: getNetworkErrorMessage(error) };
