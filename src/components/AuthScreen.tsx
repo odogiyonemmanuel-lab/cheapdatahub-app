@@ -63,7 +63,7 @@ export default function AuthScreen({ onSuccess }: { onSuccess?: () => void }) {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-emerald-400 to-teal-600 rounded-2xl mb-4 shadow-lg shadow-emerald-500/20"><Zap className="w-7 h-7 text-white" fill="white" /></div>
-          <h1 className="text-2xl font-bold text-white">CheapDataHub</h1>
+          <h1 className="text-2xl font-bold text-white">CheapDataHub.top</h1>
           <p className="text-slate-400 mt-1 text-sm">{mode === "signin" ? "Welcome back. Sign in to continue." : mode === "signup" ? "Create your account and start buying data and airtime." : "Enter your email and we’ll send you a secure password reset link."}</p>
         </div>
         <div className="bg-slate-900 rounded-2xl p-6 shadow-xl border border-slate-800">
@@ -74,12 +74,12 @@ export default function AuthScreen({ onSuccess }: { onSuccess?: () => void }) {
             {mode === "signup" && <div><label htmlFor="referralCode" className="block text-sm font-medium text-slate-300 mb-1.5">Referral Code <span className="text-slate-500 font-normal">(optional)</span></label><div className="relative"><Gift className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" /><input id="referralCode" type="text" value={referralCode} onChange={e => setReferralCode(e.target.value.toUpperCase())} disabled={loading} maxLength={30} className="w-full bg-slate-800 text-white rounded-lg pl-10 pr-3 py-2.5 text-sm border border-slate-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition disabled:opacity-50" placeholder="e.g. CDH1A2B3C4D" /><p className="text-xs text-emerald-400 mt-1.5">Use a friend's code to qualify for a ₦20 welcome bonus after your first wallet funding of ₦500 or more.</p></div></div>}
             {success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg px-3 py-2.5 text-sm flex items-start gap-2"><CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" /><span>{success}</span></div>}
             {error && <div role="alert" className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-3 py-2.5 text-sm">{error}</div>}
-            {mode === "signin" && <div className="text-right -mt-2"><button type="button" onClick={() => { clearMessages(); setMode("forgot"); setPassword(""); }} className="text-sm text-emerald-400 hover:text-emerald-300">Forgot password?</button></div>}
+            {mode !== "forgot" && <div className="flex items-center justify-between -mt-2 text-sm"><button type="button" onClick={() => { clearMessages(); setMode("forgot"); setPassword(""); }} disabled={loading} className="text-emerald-400 hover:text-emerald-300 transition disabled:opacity-50">Forgot password?</button><span className="text-slate-600">{mode === "signin" ? "Sign in securely" : "Already registered? Sign in below"}</span></div>}
             <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-semibold rounded-lg py-2.5 text-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">{loading && <Loader2 className="w-4 h-4 animate-spin" />}{loading ? mode === "signin" ? "Signing In..." : mode === "signup" ? "Creating Account..." : "Sending reset link..." : mode === "signin" ? "Sign In" : mode === "signup" ? "Create Account" : "Send reset link"}</button>
           </form>
-          <div className="mt-5 text-center text-sm text-slate-400">{mode === "signin" ? "Don't have an account?" : "Already have an account?"}{" "}<button type="button" onClick={switchMode} disabled={loading} className="text-emerald-400 hover:text-emerald-300 font-medium transition disabled:opacity-50">{mode === "signin" ? "Sign up" : "Sign in"}</button></div>
+          <div className="mt-5 text-center text-sm text-slate-400">{mode === "signin" ? "Don't have an account?" : mode === "signup" ? "Already have an account?" : "Remember your password?"}{" "}<button type="button" onClick={() => { clearMessages(); setMode(mode === "forgot" ? "signin" : mode === "signin" ? "signup" : "signin"); setPassword(""); }} disabled={loading} className="text-emerald-400 hover:text-emerald-300 font-medium transition disabled:opacity-50">{mode === "signin" ? "Sign up" : mode === "signup" ? "Sign in" : "Back to sign in"}</button></div>
         </div>
-        <div className="mt-5 flex items-center justify-center gap-2 text-xs text-slate-600"><Lock className="w-3.5 h-3.5" />Your account is protected by secure authentication.</div>
+        <div className="mt-5 flex items-center justify-center gap-2 text-xs text-slate-600"><Lock className="w-3.5 h-3.5" />Secure authentication on CheapDataHub.top</div>
       </div>
     </div>
   );
