@@ -7,6 +7,7 @@ import AdminLogin from "@/components/admin/AdminLogin";
 import AdminDashboard from "@/components/admin/AdminDashboard";
 import PaymentCallback from "@/pages/payment/callback.tsx";
 import Referrals from "@/pages/Referrals";
+import ResetPassword from "@/pages/ResetPassword";
 
 type View = "dashboard" | "fund-wallet" | "airtime" | "data" | "transactions";
 type Screen = "landing" | "auth" | "app";
@@ -31,9 +32,11 @@ function AppContent() {
   const isAdminRoute = pathname === "/admin";
   const isPaymentCallbackRoute = pathname === "/payment/callback";
   const isReferralRoute = pathname === "/referrals";
+  const isResetPasswordRoute = pathname === "/reset-password";
 
   if (loading) return <LoadingScreen />;
   if (isPaymentCallbackRoute) return <PaymentCallback />;
+  if (isResetPasswordRoute) return <ResetPassword />;
 
   if (isReferralRoute) {
     return user ? <Referrals /> : <AuthScreen onSuccess={() => window.location.replace("/referrals")} />;
