@@ -24,6 +24,8 @@ export default function AuthScreen({ onSuccess }: { onSuccess?: () => void }) {
     if (!trimmedEmail) return "Please enter your email address.";
     if (!trimmedEmail.includes("@")) return "Please enter a valid email address.";
     if (mode === "signup" && !fullName.trim()) return "Please enter your full name.";
+    if (mode === "signup" && !phoneNumber.trim()) return "Please enter your phone number.";
+    if (mode === "signup" && !/^\\+?[0-9][0-9\\s()-]{6,19}$/.test(phoneNumber.trim())) return "Please enter a valid phone number.";
     if (mode === "forgot") return null;
     if (!password) return "Please enter your password.";
     if (password.length < 6) return "Password must be at least 6 characters.";
