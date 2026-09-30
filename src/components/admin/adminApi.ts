@@ -10,7 +10,7 @@ async function requireAdmin() {
   return user;
 }
 
-export type AdminUser = { id: string; user_id: string; email: string; full_name: string; wallet_balance: number; is_active: boolean; created_at?: string | null };
+export type AdminUser = { id: string; user_id: string; email: string; full_name: string; phone_number: string; wallet_balance: number; is_active: boolean; created_at?: string | null };
 export type AdminStats = { users: number; fundedWallets: number; successfulTransactions: number; transactionVolume: number; estimatedProfit: number; pendingTransactions: number };
 export type AdminTransaction = { id: string; user_id: string; user_email?: string | null; type: string; plan_name?: string | null; amount: number; status: string; reference?: string | null; created_at: string };
 export type AdminReferral = { referral_id: string; referral_code: string; referrer_id: string; referrer_email: string; referrer_name: string; referee_id: string; referee_email: string; referee_name: string; status: string; referrer_reward: number; referee_reward: number; created_at: string; completed_at?: string | null };
@@ -22,9 +22,9 @@ export async function getAdminUsers(search = ""): Promise<AdminUser[]> {
   await requireAdmin();
   const { data, error } = await supabase.rpc("cdh_admin_users");
   if (error) throw new Error(`Unable to load users: ${error.message}`);
-  let users: AdminUser[] = (data ?? []).map((row: Record<string, unknown>) => ({ id: String(row.id ?? row.user_id ?? ""), user_id: String(row.user_id ?? row.id ?? ""), email: String(row.email ?? ""), full_name: String(row.full_name ?? "").trim() || "Unnamed user", wallet_balance: numberValue(row.wallet_balance ?? row.balance), is_active: row.is_active !== false, created_at: row.created_at ? String(row.created_at) : null }));
+  let users: AdminUser[] = (data ?? []).map((row: Record<string, unknown>) => ({ id: String(row.id ?? row.user_id ?? ""), user_id: String(row.user_id ?? row.id ?? ""), email: String(row.email ?? ""), full_name: String(row.full_name ?? "").trim() || "Unnamed user", phone_number: String(row.phone_number ?? "").trim(), wallet_balance: numberValue(row.wallet_balance ?? row.balance), is_active: row.is_active !== false, created_at: row.created_at ? String(row.created_at) : null }));
   const term = search.trim().toLowerCase();
-  if (term) users = users.filter((user) => user.full_name.toLowerCase().includes(term) || user.email.toLowerCase().includes(term) || user.user_id.toLowerCase().includes(term));
+  if (term) users = users.filter((user) => user.full_name.toLowerCase().includes(term) || user.email.toLowerCase().includes(term) || user.phone_number.toLowerCase().includes(term) || user.user_id.toLowerCase().includes(term));
   return users;
 }
 
