@@ -15,7 +15,7 @@ type AuthContextType = {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
-  signUp: (email: string, password: string, fullName: string, referralCode?: string) => Promise<AuthResult>;
+  signUp: (email: string, password: string, fullName: string, phoneNumber: string, referralCode?: string) => Promise<AuthResult>;
   resetPassword: (email: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
 };
@@ -70,19 +70,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string, fullName: string, referralCode?: string): Promise<AuthResult> => {
+  const signUp = async (email: string, password: string, fullName: string, phoneNumber: string, referralCode?: string): Promise<AuthResult> => {
     try {
       const cleanEmail = email.trim();
       const cleanName = fullName.trim();
+      const cleanPhoneNumber = phoneNumber.trim();
       const cleanReferralCode = referralCode?.trim().toUpperCase();
       if (!cleanName) return { error: "Please enter your full name." };
+      if (!cleanPhoneNumber) return { error: "Please enter your phone number." };
+      if (!/^\\+?[0-9][0-9\\s()-]{6,19}$/.test(cleanPhoneNumber)) return { error: "Please enter a valid phone number, including country code if needed." };
       if (!cleanEmail) return { error: "Please enter your email address." };
       if (password.length < 6) return { error: "Password must be at least 6 characters." };
 
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
-        options: { data: { full_name: cleanName, ...(cleanReferralCode ? { referral_code: cleanReferralCode } : {}) } },
+        options: { data: { full_name: cleanName, phone_number: cleanPhoneNumber, ...(cleanReferralCode ? { referral_code: cleanReferralCode } : {}) } },
       });
       if (error) {
         console.error("Supabase sign-up error:", error);
