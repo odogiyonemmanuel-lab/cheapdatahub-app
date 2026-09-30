@@ -44,9 +44,14 @@ export default function AuthScreen({ onSuccess }: { onSuccess?: () => void }) {
       if (mode === "forgot") {
         setSuccess("If an account exists for this email, a password reset link has been sent. Check your inbox and spam folder.");
       } else if (mode === "signup") {
-        setSuccess("Account created successfully. Please sign in to continue.");
-        setMode("signin"); setPassword(""); setFullName("");
-        onSuccess?.();
+        setPassword(""); setFullName("");
+        if (result.authenticated) {
+          setSuccess("Account created. You are now signed in.");
+          onSuccess?.();
+        } else {
+          setSuccess("Account created. Check your email to confirm it, then sign in.");
+          setMode("signin");
+        }
       } else onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
