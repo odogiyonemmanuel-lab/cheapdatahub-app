@@ -2,10 +2,10 @@ import { useState } from "react";
 import { Zap, Mail, Lock, User as UserIcon, Loader2, ArrowLeft, Eye, EyeOff, CheckCircle2, Gift } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
-type AuthMode = "signin" | "signup";
+type AuthMode = "signin" | "signup" | "forgot";
 
 export default function AuthScreen({ onSuccess }: { onSuccess?: () => void }) {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, resetPassword } = useAuth();
   const [mode, setMode] = useState<AuthMode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,6 +23,7 @@ export default function AuthScreen({ onSuccess }: { onSuccess?: () => void }) {
     if (!trimmedEmail) return "Please enter your email address.";
     if (!trimmedEmail.includes("@")) return "Please enter a valid email address.";
     if (mode === "signup" && !fullName.trim()) return "Please enter your full name.";
+    if (mode === "forgot") return null;
     if (!password) return "Please enter your password.";
     if (password.length < 6) return "Password must be at least 6 characters.";
     return null;
@@ -34,11 +35,15 @@ export default function AuthScreen({ onSuccess }: { onSuccess?: () => void }) {
     if (validationError) { setError(validationError); return; }
     setLoading(true);
     try {
-      const result = mode === "signin"
-        ? await signIn(email.trim(), password)
-        : await signUp(email.trim(), password, fullName.trim(), referralCode);
+      const result = mode === "forgot"
+        ? await resetPassword(email.trim())
+        : mode === "signin"
+          ? await signIn(email.trim(), password)
+          : await signUp(email.trim(), password, fullName.trim(), referralCode);
       if (result.error) { setError(getFriendlyAuthError(result.error)); return; }
-      if (mode === "signup") {
+      if (mode === "forgot") {
+        setSuccess("If an account exists for this email, a password reset link has been sent. Check your inbox and spam folder.");
+      } else if (mode === "signup") {
         setSuccess("Account created successfully. Please sign in to continue.");
         setMode("signin"); setPassword(""); setFullName("");
         onSuccess?.();
@@ -60,11 +65,12 @@ export default function AuthScreen({ onSuccess }: { onSuccess?: () => void }) {
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === "signup" && <div><label htmlFor="fullName" className="block text-sm font-medium text-slate-300 mb-1.5">Full Name</label><div className="relative"><UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" /><input id="fullName" type="text" value={fullName} onChange={e => setFullName(e.target.value)} autoComplete="name" disabled={loading} required className="w-full bg-slate-800 text-white rounded-lg pl-10 pr-3 py-2.5 text-sm border border-slate-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition disabled:opacity-50" placeholder="John Doe" /></div></div>}
             <div><label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1.5">Email</label><div className="relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" /><input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" disabled={loading} required className="w-full bg-slate-800 text-white rounded-lg pl-10 pr-3 py-2.5 text-sm border border-slate-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition disabled:opacity-50" placeholder="you@example.com" /></div></div>
-            <div><label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1.5">Password</label><div className="relative"><Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" /><input id="password" type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode === "signin" ? "current-password" : "new-password"} disabled={loading} required minLength={6} className="w-full bg-slate-800 text-white rounded-lg pl-10 pr-11 py-2.5 text-sm border border-slate-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition disabled:opacity-50" placeholder="••••••••" /><button type="button" onClick={() => setShowPassword(value => !value)} disabled={loading} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></div>{mode === "signup" && <p className="text-xs text-slate-500 mt-1.5">Password must contain at least 6 characters.</p>}</div>
+            {mode !== "forgot" && <div><label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1.5">Password</label><div className="relative"><Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" /><input id="password" type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode === "signin" ? "current-password" : "new-password"} disabled={loading} required minLength={6} className="w-full bg-slate-800 text-white rounded-lg pl-10 pr-11 py-2.5 text-sm border border-slate-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition disabled:opacity-50" placeholder="••••••••" /><button type="button" onClick={() => setShowPassword(value => !value)} disabled={loading} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></div>{mode === "signup" && <p className="text-xs text-slate-500 mt-1.5">Password must contain at least 6 characters.</p>}</div>}
             {mode === "signup" && <div><label htmlFor="referralCode" className="block text-sm font-medium text-slate-300 mb-1.5">Referral Code <span className="text-slate-500 font-normal">(optional)</span></label><div className="relative"><Gift className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" /><input id="referralCode" type="text" value={referralCode} onChange={e => setReferralCode(e.target.value.toUpperCase())} disabled={loading} maxLength={30} className="w-full bg-slate-800 text-white rounded-lg pl-10 pr-3 py-2.5 text-sm border border-slate-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition disabled:opacity-50" placeholder="e.g. CDH1A2B3C4D" /><p className="text-xs text-emerald-400 mt-1.5">Use a friend's code to qualify for a ₦20 welcome bonus after your first wallet funding of ₦500 or more.</p></div></div>}
             {success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg px-3 py-2.5 text-sm flex items-start gap-2"><CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" /><span>{success}</span></div>}
             {error && <div role="alert" className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-3 py-2.5 text-sm">{error}</div>}
-            <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-semibold rounded-lg py-2.5 text-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">{loading && <Loader2 className="w-4 h-4 animate-spin" />}{loading ? mode === "signin" ? "Signing In..." : "Creating Account..." : mode === "signin" ? "Sign In" : "Create Account"}</button>
+            {mode === "signin" && <div className="text-right -mt-2"><button type="button" onClick={() => { clearMessages(); setMode("forgot"); setPassword(""); }} className="text-sm text-emerald-400 hover:text-emerald-300">Forgot password?</button></div>}
+            <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-semibold rounded-lg py-2.5 text-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">{loading && <Loader2 className="w-4 h-4 animate-spin" />}{loading ? mode === "signin" ? "Signing In..." : mode === "signup" ? "Creating Account..." : "Sending reset link..." : mode === "signin" ? "Sign In" : mode === "signup" ? "Create Account" : "Send reset link"}</button>
           </form>
           <div className="mt-5 text-center text-sm text-slate-400">{mode === "signin" ? "Don't have an account?" : "Already have an account?"}{" "}<button type="button" onClick={switchMode} disabled={loading} className="text-emerald-400 hover:text-emerald-300 font-medium transition disabled:opacity-50">{mode === "signin" ? "Sign up" : "Sign in"}</button></div>
         </div>
