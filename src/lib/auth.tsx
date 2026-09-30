@@ -16,6 +16,7 @@ type AuthContextType = {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string, fullName: string, referralCode?: string) => Promise<AuthResult>;
+  resetPassword: (email: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
 };
 
@@ -95,6 +96,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const resetPassword = async (email: string): Promise<AuthResult> => {
+    try {
+      const cleanEmail = email.trim();
+      if (!cleanEmail) return { error: "Please enter your email address." };
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, { redirectTo: window.location.origin + "/reset-password" });
+      if (error) return { error: getAuthErrorMessage(error) };
+      return { error: null };
+    } catch (error) { return { error: getNetworkErrorMessage(error) }; }
+  };
+
   const signOut = async (): Promise<void> => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -106,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  return <AuthContext.Provider value={{ session, user, loading, signIn, signUp, signOut }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ session, user, loading, signIn, signUp, resetPassword, signOut }}>{children}</AuthContext.Provider>;
 }
 
 function getAuthErrorMessage(error: { message?: string; status?: number; name?: string }): string {
