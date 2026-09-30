@@ -115,7 +115,7 @@ export default function AdminUsers() {
                 void load();
               }
             }}
-            placeholder="Search email or name"
+            placeholder="Search name, email or phone"
             className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2.5 pl-10 pr-3 text-sm outline-none focus:border-emerald-500"
           />
         </div>
@@ -161,6 +161,7 @@ export default function AdminUsers() {
                   <div className="text-xs text-slate-500 truncate">
                     {user.email || user.id}
                   </div>
+                  <div className="text-xs text-slate-400 mt-1">Phone: {user.phone_number || "Not provided"}</div>
 
                   {user.is_active && (
                     <div className="text-xs text-emerald-400 mt-1">
