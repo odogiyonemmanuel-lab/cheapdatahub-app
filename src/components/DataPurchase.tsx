@@ -71,7 +71,7 @@ export default function DataPurchase({ onSuccess }: { onSuccess: () => void }) {
       setError("Select a data plan");
       return;
     }
-    if (!/^\\d{11}$/.test(phone)) {
+    if (!/^\d{11}$/.test(phone)) {
       setError("Enter a valid 11-digit phone number");
       return;
     }
@@ -128,7 +128,7 @@ export default function DataPurchase({ onSuccess }: { onSuccess: () => void }) {
 
         <div>
           <label htmlFor="data-phone" className="mb-1.5 block text-sm font-medium text-slate-200">Phone Number</label>
-          <input id="data-phone" type="tel" inputMode="numeric" autoComplete="tel-national" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\\D/g, "").slice(0, 11))} required maxLength={11} placeholder="08012345678" className={fieldClass} disabled={loading} />
+          <input id="data-phone" type="tel" inputMode="numeric" autoComplete="tel-national" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 11))} required maxLength={11} placeholder="08012345678" className={fieldClass} disabled={loading} />
         </div>
 
         <button type="submit" disabled={loading || pricingLoading || !selectedPlan || phone.length !== 11} className="w-full rounded-md border border-emerald-500 bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50">
